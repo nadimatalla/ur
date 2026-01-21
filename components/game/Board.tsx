@@ -30,11 +30,23 @@ export const Board: React.FC = () => {
     };
 
     const handleTilePress = (r: number, c: number) => {
-        // Find if this tile is a valid destination for any move
-        const move = validMoves.find(m => {
-            if (gameState.currentTurn !== playerId) return false;
-            if (m.toIndex === 14) return false;
+        if (gameState.currentTurn !== playerId) return;
 
+        // First, check if there's a piece at this location that can score (toIndex === 14)
+        const scoringMove = validMoves.find(m => {
+            if (m.toIndex !== 14) return false;
+            // Check if the piece's current position matches this tile
+            return mapIndexToCoord(playerId, m.fromIndex, r, c);
+        });
+
+        if (scoringMove) {
+            makeMove(scoringMove);
+            return;
+        }
+
+        // Otherwise, find if this tile is a valid destination for any move
+        const move = validMoves.find(m => {
+            if (m.toIndex === 14) return false; // Scoring moves handled above
             return mapIndexToCoord(playerId, m.toIndex, r, c);
         });
 
@@ -60,10 +72,19 @@ export const Board: React.FC = () => {
                     // Check if this tile is a valid target for the current player
                     let isValidTarget = false;
                     if (gameState.currentTurn === playerId) {
-                        isValidTarget = validMoves.some(m => {
+                        // Check if a piece here can score (move off the board)
+                        const canScore = validMoves.some(m => {
+                            if (m.toIndex !== 14) return false;
+                            return mapIndexToCoord(playerId, m.fromIndex, r, c);
+                        });
+
+                        // Check if this is a valid destination for a move
+                        const isDestination = validMoves.some(m => {
                             if (m.toIndex === 14) return false;
                             return mapIndexToCoord(playerId, m.toIndex, r, c);
                         });
+
+                        isValidTarget = canScore || isDestination;
                     }
 
                     rowCells.push(
