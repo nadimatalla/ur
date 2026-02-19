@@ -218,17 +218,24 @@ var MAX_PLAYERS = 2;
 var RPC_AUTH_LINK_CUSTOM = "auth_link_custom";
 var RPC_MATCHMAKER_ADD = "matchmaker_add";
 var MATCH_HANDLER = "authoritative_match";
+var matchInitHandler = matchInit;
+var matchJoinAttemptHandler = matchJoinAttempt;
+var matchJoinHandler = matchJoin;
+var matchLeaveHandler = matchLeave;
+var matchLoopHandler = matchLoop;
+var matchTerminateHandler = matchTerminate;
+var matchSignalHandler = matchSignal;
 function InitModule(_ctx, logger, _nk, initializer) {
   initializer.registerRpc(RPC_AUTH_LINK_CUSTOM, rpcAuthLinkCustom);
   initializer.registerRpc(RPC_MATCHMAKER_ADD, rpcMatchmakerAdd);
   initializer.registerMatch(MATCH_HANDLER, {
-    matchInit,
-    matchJoinAttempt,
-    matchJoin,
-    matchLeave,
-    matchLoop,
-    matchTerminate,
-    matchSignal
+    matchInit: matchInitHandler,
+    matchJoinAttempt: matchJoinAttemptHandler,
+    matchJoin: matchJoinHandler,
+    matchLeave: matchLeaveHandler,
+    matchLoop: matchLoopHandler,
+    matchTerminate: matchTerminateHandler,
+    matchSignal: matchSignalHandler
   });
   initializer.registerMatchmakerMatched(matchmakerMatched);
   logger.info("Nakama runtime module loaded.");

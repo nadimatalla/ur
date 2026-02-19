@@ -42,6 +42,16 @@ const RPC_AUTH_LINK_CUSTOM = "auth_link_custom";
 const RPC_MATCHMAKER_ADD = "matchmaker_add";
 const MATCH_HANDLER = "authoritative_match";
 
+// Nakama's JS runtime parser can panic on shorthand object properties in registerMatch.
+// Use distinct local aliases so emitted JS keeps explicit key:value pairs.
+const matchInitHandler = matchInit;
+const matchJoinAttemptHandler = matchJoinAttempt;
+const matchJoinHandler = matchJoin;
+const matchLeaveHandler = matchLeave;
+const matchLoopHandler = matchLoop;
+const matchTerminateHandler = matchTerminate;
+const matchSignalHandler = matchSignal;
+
 function InitModule(
   _ctx: nkruntime.Context,
   logger: nkruntime.Logger,
@@ -51,13 +61,13 @@ function InitModule(
   initializer.registerRpc(RPC_AUTH_LINK_CUSTOM, rpcAuthLinkCustom);
   initializer.registerRpc(RPC_MATCHMAKER_ADD, rpcMatchmakerAdd);
   initializer.registerMatch(MATCH_HANDLER, {
-    matchInit,
-    matchJoinAttempt,
-    matchJoin,
-    matchLeave,
-    matchLoop,
-    matchTerminate,
-    matchSignal,
+    matchInit: matchInitHandler,
+    matchJoinAttempt: matchJoinAttemptHandler,
+    matchJoin: matchJoinHandler,
+    matchLeave: matchLeaveHandler,
+    matchLoop: matchLoopHandler,
+    matchTerminate: matchTerminateHandler,
+    matchSignal: matchSignalHandler,
   });
   initializer.registerMatchmakerMatched(matchmakerMatched);
 
