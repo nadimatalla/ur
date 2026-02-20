@@ -54,7 +54,7 @@ export const Board: React.FC<BoardProps> = ({
   const gameState = useGameStore((state) => state.gameState);
   const validMoves = useGameStore((state) => state.validMoves);
   const makeMove = useGameStore((state) => state.makeMove);
-  const playerColor = useGameStore((state) => state.playerColor ?? 'light');
+  const playerColor = useGameStore((state) => state.playerColor);
   const { width } = useWindowDimensions();
   const [selectedMove, setSelectedMove] = useState<MoveAction | null>(null);
 
@@ -122,7 +122,14 @@ export const Board: React.FC<BoardProps> = ({
     return undefined;
   };
 
-  const isMyTurn = gameState.currentTurn === playerColor;
+  const assignedPlayerColor: 'light' | 'dark' | null = playerColor === 'light' || playerColor === 'dark'
+    ? playerColor
+    : null;
+
+  const mapAssignedIndexToCoord = (index: number, r: number, c: number) =>
+    assignedPlayerColor ? mapIndexToCoord(assignedPlayerColor, index, r, c) : false;
+
+  const isMyTurn = assignedPlayerColor !== null && gameState.currentTurn === assignedPlayerColor;
 
   const spawnMove = useMemo(
     () => validMoves.find((move) => move.fromIndex === -1) ?? null,
@@ -287,10 +294,10 @@ export const Board: React.FC<BoardProps> = ({
   };
 
   const handleTilePress = (r: number, c: number) => {
-    if (!isMyTurn || gameState.phase !== 'moving') return;
+    if (!assignedPlayerColor || !isMyTurn || gameState.phase !== 'moving') return;
 
     const moveFromTile = validMoves.find(
-      (move) => move.fromIndex >= 0 && mapIndexToCoord(playerColor, move.fromIndex, r, c),
+      (move) => move.fromIndex >= 0 && mapAssignedIndexToCoord(move.fromIndex, r, c),
     );
 
     if (moveFromTile) {
@@ -309,9 +316,9 @@ export const Board: React.FC<BoardProps> = ({
 
     if (selectedMove) {
       const selectedToTileMatch =
-        selectedMove.toIndex !== PATH_LENGTH && mapIndexToCoord(playerColor, selectedMove.toIndex, r, c);
+        selectedMove.toIndex !== PATH_LENGTH && mapAssignedIndexToCoord(selectedMove.toIndex, r, c);
       const selectedScoreMatch =
-        selectedMove.toIndex === PATH_LENGTH && mapIndexToCoord(playerColor, selectedMove.fromIndex, r, c);
+        selectedMove.toIndex === PATH_LENGTH && mapAssignedIndexToCoord(selectedMove.fromIndex, r, c);
 
       if (selectedToTileMatch || selectedScoreMatch) {
         executeMove(selectedMove);
@@ -321,7 +328,7 @@ export const Board: React.FC<BoardProps> = ({
 
     const scoringMove = validMoves.find((move) => {
       if (move.toIndex !== PATH_LENGTH) return false;
-      return move.fromIndex >= 0 && mapIndexToCoord(playerColor, move.fromIndex, r, c);
+      return move.fromIndex >= 0 && mapAssignedIndexToCoord(move.fromIndex, r, c);
     });
 
     if (scoringMove) {
@@ -330,7 +337,7 @@ export const Board: React.FC<BoardProps> = ({
     }
 
     const moveToTile = validMoves.find(
-      (move) => move.toIndex !== PATH_LENGTH && mapIndexToCoord(playerColor, move.toIndex, r, c),
+      (move) => move.toIndex !== PATH_LENGTH && mapAssignedIndexToCoord(move.toIndex, r, c),
     );
 
     if (moveToTile) {
@@ -366,28 +373,28 @@ export const Board: React.FC<BoardProps> = ({
 
         const piece = getPieceAt(r, c);
         const moveFromTile = validMoves.find(
-          (move) => move.fromIndex >= 0 && isMyTurn && mapIndexToCoord(playerColor, move.fromIndex, r, c),
+          (move) => move.fromIndex >= 0 && isMyTurn && mapAssignedIndexToCoord(move.fromIndex, r, c),
         );
 
         const isScoreOrigin =
           isMyTurn &&
           validMoves.some(
-            (move) => move.toIndex === PATH_LENGTH && move.fromIndex >= 0 && mapIndexToCoord(playerColor, move.fromIndex, r, c),
+            (move) => move.toIndex === PATH_LENGTH && move.fromIndex >= 0 && mapAssignedIndexToCoord(move.fromIndex, r, c),
           );
 
         const isDestination =
           isMyTurn &&
           validMoves.some(
-            (move) => move.toIndex !== PATH_LENGTH && mapIndexToCoord(playerColor, move.toIndex, r, c),
+            (move) => move.toIndex !== PATH_LENGTH && mapAssignedIndexToCoord(move.toIndex, r, c),
           );
 
         const isSelectedDestination =
           !!selectedMove &&
           selectedMove.toIndex !== PATH_LENGTH &&
-          mapIndexToCoord(playerColor, selectedMove.toIndex, r, c);
+          mapAssignedIndexToCoord(selectedMove.toIndex, r, c);
 
         const isSelectedPiece =
-          !!selectedMove && selectedMove.fromIndex >= 0 && mapIndexToCoord(playerColor, selectedMove.fromIndex, r, c);
+          !!selectedMove && selectedMove.fromIndex >= 0 && mapAssignedIndexToCoord(selectedMove.fromIndex, r, c);
 
         const isValidTarget = isSelectedDestination || isScoreOrigin || isDestination;
         const isInteractable = isMyTurn && (isValidTarget || !!moveFromTile || isSelectedPiece);

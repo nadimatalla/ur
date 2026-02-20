@@ -218,6 +218,76 @@ var MAX_PLAYERS = 2;
 var RPC_AUTH_LINK_CUSTOM = "auth_link_custom";
 var RPC_MATCHMAKER_ADD = "matchmaker_add";
 var MATCH_HANDLER = "authoritative_match";
+var asRecord = (value) => typeof value === "object" && value !== null ? value : null;
+var readStringField = (value, keys) => {
+  const record = asRecord(value);
+  if (!record) {
+    return null;
+  }
+  for (const key of keys) {
+    const field = record[key];
+    if (typeof field === "string" && field.length > 0) {
+      return field;
+    }
+  }
+  return null;
+};
+var readNumberField = (value, keys) => {
+  const record = asRecord(value);
+  if (!record) {
+    return null;
+  }
+  for (const key of keys) {
+    const field = record[key];
+    if (typeof field === "number" && Number.isFinite(field)) {
+      return field;
+    }
+  }
+  return null;
+};
+var encodeBytesToString = (bytes) => {
+  if (typeof TextDecoder !== "undefined") {
+    try {
+      return new TextDecoder().decode(bytes);
+    } catch (e) {
+    }
+  }
+  let output = "";
+  for (let i = 0; i < bytes.length; i += 1) {
+    output += String.fromCharCode(bytes[i]);
+  }
+  return output;
+};
+var decodeMessageData = (data, nk) => {
+  var _a;
+  if (typeof data === "string") {
+    return data;
+  }
+  const binaryToString = (_a = asRecord(nk)) == null ? void 0 : _a.binaryToString;
+  if (typeof binaryToString === "function") {
+    try {
+      return String(binaryToString(data));
+    } catch (e) {
+    }
+  }
+  if (typeof ArrayBuffer !== "undefined" && data instanceof ArrayBuffer) {
+    return encodeBytesToString(new Uint8Array(data));
+  }
+  if (typeof Uint8Array !== "undefined" && data instanceof Uint8Array) {
+    return encodeBytesToString(data);
+  }
+  if (Array.isArray(data) && data.every((value) => typeof value === "number")) {
+    return encodeBytesToString(Uint8Array.from(data));
+  }
+  return String(data != null ? data : "");
+};
+var getPresenceUserId = (presence) => readStringField(presence, ["userId", "user_id"]);
+var getSenderUserId = (sender) => readStringField(sender, ["userId", "user_id"]);
+var getMatchId = (ctx) => {
+  var _a;
+  return (_a = readStringField(ctx, ["matchId", "match_id"])) != null ? _a : "";
+};
+var getMessageOpCode = (message) => readNumberField(message, ["opCode", "op_code"]);
 var matchInitHandler = matchInit;
 var matchJoinAttemptHandler = matchJoinAttempt;
 var matchJoinHandler = matchJoin;
@@ -279,7 +349,8 @@ function rpcMatchmakerAdd(ctx, _logger, nk, payload) {
   return JSON.stringify({ ticket });
 }
 function matchmakerMatched(_ctx, logger, nk, matched) {
-  const playerIds = matched.users.map((user) => user.presence.userId).slice(0, MAX_PLAYERS);
+  const users = Array.isArray(matched.users) ? matched.users : [];
+  const playerIds = users.map((user) => getPresenceUserId(user == null ? void 0 : user.presence)).filter((userId) => Boolean(userId)).slice(0, MAX_PLAYERS);
   logger.info("Matchmaker matched %s players", playerIds.length);
   return nk.matchCreate(MATCH_HANDLER, { playerIds });
 }
@@ -300,79 +371,89 @@ function matchInit(_ctx, _logger, _nk, params) {
   };
   return { state, tickRate: TICK_RATE, label: MATCH_HANDLER };
 }
-function matchJoinAttempt(_ctx, _logger, _nk, _dispatcher, _tick, state, presence) {
+function matchJoinAttempt(_ctx, logger, _nk, _dispatcher, _tick, state, presence) {
+  const userId = getPresenceUserId(presence);
+  if (!userId) {
+    logger.warn("Rejecting join attempt with missing user ID.");
+    return { state, accept: false, rejectMessage: "Unable to identify player." };
+  }
   const activeCount = Object.keys(state.presences).length;
-  const hasExistingAssignment = Boolean(state.assignments[presence.userId]);
+  const hasExistingAssignment = Boolean(state.assignments[userId]);
   if (activeCount >= MAX_PLAYERS && !hasExistingAssignment) {
     return { state, accept: false, rejectMessage: "Match is full." };
   }
-  state.presences[presence.userId] = presence;
-  ensureAssignment(state, presence.userId);
+  state.presences[userId] = presence;
+  ensureAssignment(state, userId);
   return { state, accept: true };
 }
-function matchJoin(ctx, _logger, _nk, dispatcher, _tick, state, presences) {
+function matchJoin(ctx, logger, _nk, dispatcher, _tick, state, presences) {
   presences.forEach((presence) => {
-    state.presences[presence.userId] = presence;
-    ensureAssignment(state, presence.userId);
+    const userId = getPresenceUserId(presence);
+    if (!userId) {
+      logger.warn("Skipping join presence with missing user ID.");
+      return;
+    }
+    state.presences[userId] = presence;
+    ensureAssignment(state, userId);
   });
-  broadcastSnapshot(dispatcher, state, ctx.matchId || "");
+  broadcastSnapshot(dispatcher, state, getMatchId(ctx));
   return { state };
 }
-function matchLeave(_ctx, _logger, _nk, _dispatcher, _tick, state, presences) {
+function matchLeave(_ctx, logger, _nk, _dispatcher, _tick, state, presences) {
   presences.forEach((presence) => {
-    delete state.presences[presence.userId];
+    const userId = getPresenceUserId(presence);
+    if (!userId) {
+      logger.warn("Skipping leave presence with missing user ID.");
+      return;
+    }
+    delete state.presences[userId];
   });
   return { state };
 }
-function matchLoop(ctx, logger, _nk, dispatcher, _tick, state, messages) {
+function matchLoop(ctx, logger, nk, dispatcher, _tick, state, messages) {
+  const matchId = getMatchId(ctx);
   messages.forEach((message) => {
-    const senderPresence = state.presences[message.sender.userId];
-    const senderColor = state.assignments[message.sender.userId];
+    const senderUserId = getSenderUserId(message.sender);
+    if (!senderUserId) {
+      logger.warn("Ignoring message with missing sender user ID.");
+      return;
+    }
+    const senderPresence = state.presences[senderUserId];
+    const senderColor = state.assignments[senderUserId];
     if (!senderPresence || !senderColor) {
       sendError(
         dispatcher,
         state,
-        message.sender.userId,
+        senderUserId,
         "UNAUTHORIZED_PLAYER",
         "Only assigned players can send match commands."
       );
       return;
     }
-    const rawPayload = String(message.data);
+    const opCode = getMessageOpCode(message);
+    if (opCode === null) {
+      sendError(dispatcher, state, senderUserId, "UNKNOWN_OP", "Message opcode is missing.");
+      return;
+    }
+    const rawPayload = decodeMessageData(message.data, nk);
     const decodedPayload = decodePayload(rawPayload);
-    if (message.opCode === MatchOpCode.ROLL_REQUEST) {
+    if (opCode === MatchOpCode.ROLL_REQUEST) {
       if (!isRollRequestPayload(decodedPayload)) {
-        sendError(dispatcher, state, message.sender.userId, "INVALID_PAYLOAD", "Roll payload is invalid.");
+        sendError(dispatcher, state, senderUserId, "INVALID_PAYLOAD", "Roll payload is invalid.");
         return;
       }
-      applyRollRequest(
-        logger,
-        dispatcher,
-        state,
-        message.sender.userId,
-        senderColor,
-        decodedPayload,
-        ctx.matchId || ""
-      );
+      applyRollRequest(logger, dispatcher, state, senderUserId, senderColor, decodedPayload, matchId);
       return;
     }
-    if (message.opCode === MatchOpCode.MOVE_REQUEST) {
+    if (opCode === MatchOpCode.MOVE_REQUEST) {
       if (!isMoveRequestPayload(decodedPayload)) {
-        sendError(dispatcher, state, message.sender.userId, "INVALID_PAYLOAD", "Move payload is invalid.");
+        sendError(dispatcher, state, senderUserId, "INVALID_PAYLOAD", "Move payload is invalid.");
         return;
       }
-      applyMoveRequest(
-        logger,
-        dispatcher,
-        state,
-        message.sender.userId,
-        senderColor,
-        decodedPayload,
-        ctx.matchId || ""
-      );
+      applyMoveRequest(logger, dispatcher, state, senderUserId, senderColor, decodedPayload, matchId);
       return;
     }
-    sendError(dispatcher, state, message.sender.userId, "UNKNOWN_OP", `Unsupported opcode ${message.opCode}.`);
+    sendError(dispatcher, state, senderUserId, "UNKNOWN_OP", `Unsupported opcode ${opCode}.`);
   });
   return { state };
 }
@@ -381,7 +462,7 @@ function matchTerminate(_ctx, _logger, _nk, _dispatcher, _tick, state, _graceSec
 }
 function matchSignal(ctx, _logger, _nk, dispatcher, _tick, state, data) {
   if (data === "snapshot") {
-    broadcastSnapshot(dispatcher, state, ctx.matchId || "");
+    broadcastSnapshot(dispatcher, state, getMatchId(ctx));
   }
   return { state };
 }

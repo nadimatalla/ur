@@ -56,8 +56,8 @@ export default function GameRoom() {
   const setRollCommandSender = useGameStore((state) => state.setRollCommandSender);
   const setMoveCommandSender = useGameStore((state) => state.setMoveCommandSender);
 
-  const effectivePlayerColor: PlayerColor = playerColor ?? 'light';
-  const isMyTurn = gameState.currentTurn === effectivePlayerColor;
+  const hasAssignedColor = playerColor === 'light' || playerColor === 'dark';
+  const isMyTurn = hasAssignedColor && gameState.currentTurn === playerColor;
   const canRoll = isMyTurn && gameState.phase === 'rolling';
 
   const [showWinModal, setShowWinModal] = React.useState(false);

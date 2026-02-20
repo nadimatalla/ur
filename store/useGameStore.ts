@@ -159,10 +159,13 @@ export const useGameStore = create<GameStore>((set, get) => ({
   },
 
   roll: () => {
-    const { gameState, onlineMode, rollCommandSender } = get();
+    const { gameState, onlineMode, rollCommandSender, playerColor } = get();
     if (gameState.phase !== 'rolling') return;
 
     if (onlineMode === 'nakama') {
+      if (!playerColor || gameState.currentTurn !== playerColor) {
+        return;
+      }
       if (rollCommandSender) {
         void rollCommandSender();
       }
@@ -197,10 +200,13 @@ export const useGameStore = create<GameStore>((set, get) => ({
   },
 
   makeMove: (move) => {
-    const { gameState, onlineMode, moveCommandSender } = get();
+    const { gameState, onlineMode, moveCommandSender, playerColor } = get();
     if (gameState.phase !== 'moving') return;
 
     if (onlineMode === 'nakama') {
+      if (!playerColor || gameState.currentTurn !== playerColor) {
+        return;
+      }
       if (moveCommandSender) {
         void moveCommandSender(move);
       }

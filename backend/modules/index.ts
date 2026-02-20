@@ -35,12 +35,106 @@ type MatchState = {
   revision: number;
 };
 
+type RuntimeRecord = Record<string, unknown>;
+
 const TICK_RATE = 10;
 const MAX_PLAYERS = 2;
 
 const RPC_AUTH_LINK_CUSTOM = "auth_link_custom";
 const RPC_MATCHMAKER_ADD = "matchmaker_add";
 const MATCH_HANDLER = "authoritative_match";
+
+const asRecord = (value: unknown): RuntimeRecord | null =>
+  typeof value === "object" && value !== null ? (value as RuntimeRecord) : null;
+
+const readStringField = (value: unknown, keys: string[]): string | null => {
+  const record = asRecord(value);
+  if (!record) {
+    return null;
+  }
+
+  for (const key of keys) {
+    const field = record[key];
+    if (typeof field === "string" && field.length > 0) {
+      return field;
+    }
+  }
+
+  return null;
+};
+
+const readNumberField = (value: unknown, keys: string[]): number | null => {
+  const record = asRecord(value);
+  if (!record) {
+    return null;
+  }
+
+  for (const key of keys) {
+    const field = record[key];
+    if (typeof field === "number" && Number.isFinite(field)) {
+      return field;
+    }
+  }
+
+  return null;
+};
+
+const encodeBytesToString = (bytes: Uint8Array): string => {
+  if (typeof TextDecoder !== "undefined") {
+    try {
+      return new TextDecoder().decode(bytes);
+    } catch {
+      // Fall through to manual decode.
+    }
+  }
+
+  let output = "";
+  for (let i = 0; i < bytes.length; i += 1) {
+    output += String.fromCharCode(bytes[i]);
+  }
+  return output;
+};
+
+const decodeMessageData = (data: unknown, nk?: nkruntime.Nakama): string => {
+  if (typeof data === "string") {
+    return data;
+  }
+
+  const binaryToString = asRecord(nk)?.binaryToString;
+  if (typeof binaryToString === "function") {
+    try {
+      return String(binaryToString(data));
+    } catch {
+      // Fall back to local decoding when runtime helper is unavailable.
+    }
+  }
+
+  if (typeof ArrayBuffer !== "undefined" && data instanceof ArrayBuffer) {
+    return encodeBytesToString(new Uint8Array(data));
+  }
+
+  if (typeof Uint8Array !== "undefined" && data instanceof Uint8Array) {
+    return encodeBytesToString(data);
+  }
+
+  if (Array.isArray(data) && data.every((value) => typeof value === "number")) {
+    return encodeBytesToString(Uint8Array.from(data));
+  }
+
+  return String(data ?? "");
+};
+
+const getPresenceUserId = (presence: unknown): string | null =>
+  readStringField(presence, ["userId", "user_id"]);
+
+const getSenderUserId = (sender: unknown): string | null =>
+  readStringField(sender, ["userId", "user_id"]);
+
+const getMatchId = (ctx: nkruntime.Context): string =>
+  readStringField(ctx, ["matchId", "match_id"]) ?? "";
+
+const getMessageOpCode = (message: nkruntime.MatchMessage): number | null =>
+  readNumberField(message, ["opCode", "op_code"]);
 
 // Nakama's JS runtime parser can panic on shorthand object properties in registerMatch.
 // Use distinct local aliases so emitted JS keeps explicit key:value pairs.
@@ -137,7 +231,11 @@ function matchmakerMatched(
   nk: nkruntime.Nakama,
   matched: nkruntime.MatchmakerMatched
 ): string {
-  const playerIds = matched.users.map((user: any) => user.presence.userId).slice(0, MAX_PLAYERS);
+  const users = Array.isArray(matched.users) ? matched.users : [];
+  const playerIds = users
+    .map((user: any) => getPresenceUserId(user?.presence))
+    .filter((userId: string | null): userId is string => Boolean(userId))
+    .slice(0, MAX_PLAYERS);
   logger.info("Matchmaker matched %s players", playerIds.length);
 
   return nk.matchCreate(MATCH_HANDLER, { playerIds });
@@ -171,29 +269,35 @@ function matchInit(
 
 function matchJoinAttempt(
   _ctx: nkruntime.Context,
-  _logger: nkruntime.Logger,
+  logger: nkruntime.Logger,
   _nk: nkruntime.Nakama,
   _dispatcher: nkruntime.MatchDispatcher,
   _tick: number,
   state: MatchState,
   presence: nkruntime.Presence
 ): { state: MatchState; accept: boolean; rejectMessage?: string } {
+  const userId = getPresenceUserId(presence);
+  if (!userId) {
+    logger.warn("Rejecting join attempt with missing user ID.");
+    return { state, accept: false, rejectMessage: "Unable to identify player." };
+  }
+
   const activeCount = Object.keys(state.presences).length;
-  const hasExistingAssignment = Boolean(state.assignments[presence.userId]);
+  const hasExistingAssignment = Boolean(state.assignments[userId]);
 
   if (activeCount >= MAX_PLAYERS && !hasExistingAssignment) {
     return { state, accept: false, rejectMessage: "Match is full." };
   }
 
-  state.presences[presence.userId] = presence;
-  ensureAssignment(state, presence.userId);
+  state.presences[userId] = presence;
+  ensureAssignment(state, userId);
 
   return { state, accept: true };
 }
 
 function matchJoin(
   ctx: nkruntime.Context,
-  _logger: nkruntime.Logger,
+  logger: nkruntime.Logger,
   _nk: nkruntime.Nakama,
   dispatcher: nkruntime.MatchDispatcher,
   _tick: number,
@@ -201,18 +305,23 @@ function matchJoin(
   presences: nkruntime.Presence[]
 ): { state: MatchState } {
   presences.forEach((presence) => {
-    state.presences[presence.userId] = presence;
-    ensureAssignment(state, presence.userId);
+    const userId = getPresenceUserId(presence);
+    if (!userId) {
+      logger.warn("Skipping join presence with missing user ID.");
+      return;
+    }
+    state.presences[userId] = presence;
+    ensureAssignment(state, userId);
   });
 
-  broadcastSnapshot(dispatcher, state, ctx.matchId || "");
+  broadcastSnapshot(dispatcher, state, getMatchId(ctx));
 
   return { state };
 }
 
 function matchLeave(
   _ctx: nkruntime.Context,
-  _logger: nkruntime.Logger,
+  logger: nkruntime.Logger,
   _nk: nkruntime.Nakama,
   _dispatcher: nkruntime.MatchDispatcher,
   _tick: number,
@@ -220,7 +329,12 @@ function matchLeave(
   presences: nkruntime.Presence[]
 ): { state: MatchState } {
   presences.forEach((presence) => {
-    delete state.presences[presence.userId];
+    const userId = getPresenceUserId(presence);
+    if (!userId) {
+      logger.warn("Skipping leave presence with missing user ID.");
+      return;
+    }
+    delete state.presences[userId];
   });
 
   return { state };
@@ -229,67 +343,65 @@ function matchLeave(
 function matchLoop(
   ctx: nkruntime.Context,
   logger: nkruntime.Logger,
-  _nk: nkruntime.Nakama,
+  nk: nkruntime.Nakama,
   dispatcher: nkruntime.MatchDispatcher,
   _tick: number,
   state: MatchState,
   messages: nkruntime.MatchMessage[]
 ): { state: MatchState } {
+  const matchId = getMatchId(ctx);
+
   messages.forEach((message) => {
-    const senderPresence = state.presences[message.sender.userId];
-    const senderColor = state.assignments[message.sender.userId];
+    const senderUserId = getSenderUserId(message.sender);
+    if (!senderUserId) {
+      logger.warn("Ignoring message with missing sender user ID.");
+      return;
+    }
+
+    const senderPresence = state.presences[senderUserId];
+    const senderColor = state.assignments[senderUserId];
 
     if (!senderPresence || !senderColor) {
       sendError(
         dispatcher,
         state,
-        message.sender.userId,
+        senderUserId,
         "UNAUTHORIZED_PLAYER",
         "Only assigned players can send match commands."
       );
       return;
     }
 
-    const rawPayload = String(message.data);
+    const opCode = getMessageOpCode(message);
+    if (opCode === null) {
+      sendError(dispatcher, state, senderUserId, "UNKNOWN_OP", "Message opcode is missing.");
+      return;
+    }
+
+    const rawPayload = decodeMessageData(message.data, nk);
     const decodedPayload = decodePayload(rawPayload);
 
-    if (message.opCode === MatchOpCode.ROLL_REQUEST) {
+    if (opCode === MatchOpCode.ROLL_REQUEST) {
       if (!isRollRequestPayload(decodedPayload)) {
-        sendError(dispatcher, state, message.sender.userId, "INVALID_PAYLOAD", "Roll payload is invalid.");
+        sendError(dispatcher, state, senderUserId, "INVALID_PAYLOAD", "Roll payload is invalid.");
         return;
       }
 
-      applyRollRequest(
-        logger,
-        dispatcher,
-        state,
-        message.sender.userId,
-        senderColor,
-        decodedPayload,
-        ctx.matchId || ""
-      );
+      applyRollRequest(logger, dispatcher, state, senderUserId, senderColor, decodedPayload, matchId);
       return;
     }
 
-    if (message.opCode === MatchOpCode.MOVE_REQUEST) {
+    if (opCode === MatchOpCode.MOVE_REQUEST) {
       if (!isMoveRequestPayload(decodedPayload)) {
-        sendError(dispatcher, state, message.sender.userId, "INVALID_PAYLOAD", "Move payload is invalid.");
+        sendError(dispatcher, state, senderUserId, "INVALID_PAYLOAD", "Move payload is invalid.");
         return;
       }
 
-      applyMoveRequest(
-        logger,
-        dispatcher,
-        state,
-        message.sender.userId,
-        senderColor,
-        decodedPayload,
-        ctx.matchId || ""
-      );
+      applyMoveRequest(logger, dispatcher, state, senderUserId, senderColor, decodedPayload, matchId);
       return;
     }
 
-    sendError(dispatcher, state, message.sender.userId, "UNKNOWN_OP", `Unsupported opcode ${message.opCode}.`);
+    sendError(dispatcher, state, senderUserId, "UNKNOWN_OP", `Unsupported opcode ${opCode}.`);
   });
 
   return { state };
@@ -317,7 +429,7 @@ function matchSignal(
   data: string
 ): { state: MatchState } | string {
   if (data === "snapshot") {
-    broadcastSnapshot(dispatcher, state, ctx.matchId || "");
+    broadcastSnapshot(dispatcher, state, getMatchId(ctx));
   }
   return { state };
 }
