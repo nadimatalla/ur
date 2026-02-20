@@ -5,6 +5,9 @@
 expo-env.d.ts
 # @end expo-cli
 
+# Expo web export output
+dist/
+
 # Environment variables
 .env
 .env.*
