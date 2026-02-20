@@ -272,6 +272,14 @@ export const Board: React.FC<BoardProps> = ({
   }, [gameState.currentTurn, gameState.phase, gameState.rollValue]);
 
   const executeMove = (move: MoveAction) => {
+    console.info('[Board][executeMove]', {
+      pieceId: move.pieceId,
+      fromIndex: move.fromIndex,
+      toIndex: move.toIndex,
+      phase: gameState.phase,
+      turn: gameState.currentTurn,
+      playerColor: assignedPlayerColor,
+    });
     LayoutAnimation.configureNext(LayoutAnimation.Presets.spring);
     makeMove(move);
     setSelectedMove(null);

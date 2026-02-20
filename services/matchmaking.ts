@@ -134,6 +134,7 @@ export type MatchResult = {
   userId: string;
   matchmakerTicket: string | null;
   playerColor: PlayerColor | null;
+  matchToken: string | null;
 };
 
 export type MatchmakingHandlers = {
@@ -202,6 +203,7 @@ export const findMatch = async (handlers?: MatchmakingHandlers): Promise<MatchRe
       userId: session.user_id,
       matchmakerTicket: ticket.ticket,
       playerColor,
+      matchToken: matched.token ?? null,
     };
   } catch (error) {
     await cancelMatchmaking();

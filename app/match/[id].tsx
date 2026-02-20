@@ -48,6 +48,9 @@ export default function GameRoom() {
   const playerColor = useGameStore((state) => state.playerColor);
   const initGame = useGameStore((state) => state.initGame);
   const setMatchId = useGameStore((state) => state.setMatchId);
+  const storedMatchId = useGameStore((state) => state.matchId);
+  const matchToken = useGameStore((state) => state.matchToken);
+  const serverRevision = useGameStore((state) => state.serverRevision);
   const applyServerSnapshot = useGameStore((state) => state.applyServerSnapshot);
   const setPlayerColor = useGameStore((state) => state.setPlayerColor);
   const setOnlineMode = useGameStore((state) => state.setOnlineMode);
@@ -57,6 +60,7 @@ export default function GameRoom() {
   const setMoveCommandSender = useGameStore((state) => state.setMoveCommandSender);
 
   const hasAssignedColor = playerColor === 'light' || playerColor === 'dark';
+  const effectiveMatchToken = storedMatchId === matchId ? matchToken : null;
   const isMyTurn = hasAssignedColor && gameState.currentTurn === playerColor;
   const canRoll = isMyTurn && gameState.phase === 'rolling';
 
@@ -74,9 +78,11 @@ export default function GameRoom() {
 
   useEffect(() => {
     if (!matchId) return;
-    initGame(matchId);
+    if (isOffline || storedMatchId !== matchId) {
+      initGame(matchId);
+    }
     setMatchId(matchId);
-  }, [initGame, matchId, setMatchId]);
+  }, [initGame, isOffline, matchId, setMatchId, storedMatchId]);
 
   const socketRef = useRef<Socket | null>(null);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -112,9 +118,22 @@ export default function GameRoom() {
         if (!isStateSnapshotPayload(payload)) {
           return;
         }
+        const assignedColorFromSnapshot = userId
+          ? (payload.assignments[userId] as PlayerColor | undefined)
+          : undefined;
+        console.info('[Nakama][snapshot]', {
+          matchId: payload.matchId,
+          revision: payload.revision,
+          assignedPlayerColor: assignedColorFromSnapshot ?? null,
+          phase: payload.gameState.phase,
+          turn: payload.gameState.currentTurn,
+          roll: payload.gameState.rollValue,
+          lightFinished: payload.gameState.light.finishedCount,
+          darkFinished: payload.gameState.dark.finishedCount,
+        });
         applyServerSnapshot(payload.gameState, payload.revision, payload.matchId);
         if (userId) {
-          const assignedColor = payload.assignments[userId] as PlayerColor | undefined;
+          const assignedColor = assignedColorFromSnapshot;
           if (assignedColor) {
             setPlayerColor(assignedColor);
           }
@@ -124,7 +143,11 @@ export default function GameRoom() {
 
       if (matchData.op_code === MatchOpCode.SERVER_ERROR) {
         if (isServerErrorPayload(payload)) {
-          console.warn(`[ServerError:${payload.code}] ${payload.message}`);
+          console.warn('[Nakama][server_error]', {
+            code: payload.code,
+            message: payload.message,
+            revision: payload.revision ?? null,
+          });
         }
       }
     };
@@ -160,7 +183,9 @@ export default function GameRoom() {
           createStatus: true,
         });
         attachSocketHandlers(socket);
-        const match = await socket.joinMatch(matchId);
+        const match = effectiveMatchToken
+          ? await socket.joinMatch(matchId, effectiveMatchToken)
+          : await socket.joinMatch(matchId);
         if (!isMounted) return;
         setMatchId(match.match_id);
         setSocketState('connected');
@@ -191,6 +216,7 @@ export default function GameRoom() {
     applyServerSnapshot,
     isOffline,
     matchId,
+    effectiveMatchToken,
     setMatchId,
     setOnlineMode,
     setPlayerColor,
@@ -211,6 +237,12 @@ export default function GameRoom() {
       const socket = socketRef.current;
       if (!socket) return;
       const payload: RollRequestPayload = { type: 'roll_request' };
+      console.info('[Nakama][send]', {
+        eventType: payload.type,
+        matchId,
+        revision: serverRevision,
+        payload,
+      });
       await socket.sendMatchState(matchId, MatchOpCode.ROLL_REQUEST, encodePayload(payload));
     };
 
@@ -218,6 +250,12 @@ export default function GameRoom() {
       const socket = socketRef.current;
       if (!socket) return;
       const payload: MoveRequestPayload = { type: 'move_request', move };
+      console.info('[Nakama][send]', {
+        eventType: payload.type,
+        matchId,
+        revision: serverRevision,
+        payload,
+      });
       await socket.sendMatchState(matchId, MatchOpCode.MOVE_REQUEST, encodePayload(payload));
     };
 
@@ -228,7 +266,7 @@ export default function GameRoom() {
       setRollCommandSender(null);
       setMoveCommandSender(null);
     };
-  }, [isOffline, matchId, setMoveCommandSender, setRollCommandSender]);
+  }, [isOffline, matchId, serverRevision, setMoveCommandSender, setRollCommandSender]);
 
   useEffect(() => {
     return () => {

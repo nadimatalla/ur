@@ -15,6 +15,7 @@ export const useMatchmaking = (mode: LobbyMode = 'bot') => {
     const setMatchId = useGameStore(state => state.setMatchId);
     const setNakamaSession = useGameStore(state => state.setNakamaSession);
     const setUserId = useGameStore(state => state.setUserId);
+    const setMatchToken = useGameStore(state => state.setMatchToken);
     const setSocketState = useGameStore(state => state.setSocketState);
     const setOnlineMode = useGameStore(state => state.setOnlineMode);
     const setPlayerColor = useGameStore(state => state.setPlayerColor);
@@ -75,12 +76,13 @@ export const useMatchmaking = (mode: LobbyMode = 'bot') => {
     const startBotGame = useCallback(() => {
         setOnlineMode('offline');
         const localMatchId = `local-${Date.now()}`;
+        setMatchToken(null);
         setMatchId(localMatchId);
         initGame(localMatchId);
         setSocketState('connected');
         setStatus('matched');
         router.push(`/match/${localMatchId}?offline=1`);
-    }, [initGame, router, setMatchId, setOnlineMode, setSocketState]);
+    }, [initGame, router, setMatchId, setMatchToken, setOnlineMode, setSocketState]);
 
     const startOnlineMatch = useCallback(async () => {
         setErrorMessage(null);
@@ -104,6 +106,7 @@ export const useMatchmaking = (mode: LobbyMode = 'bot') => {
             });
             setNakamaSession(result.session);
             setUserId(result.userId);
+            setMatchToken(result.matchToken);
             setMatchId(result.matchId);
             initGame(result.matchId);
             setPlayerColor(result.playerColor);
@@ -117,7 +120,7 @@ export const useMatchmaking = (mode: LobbyMode = 'bot') => {
             setStatus('error');
             setSocketState('error');
         }
-    }, [initGame, router, setMatchId, setNakamaSession, setOnlineMode, setPlayerColor, setSocketState, setUserId]);
+    }, [initGame, router, setMatchId, setMatchToken, setNakamaSession, setOnlineMode, setPlayerColor, setSocketState, setUserId]);
 
     const startMatch = useCallback(async () => {
         if (mode === 'bot') {

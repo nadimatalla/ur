@@ -17,6 +17,7 @@ interface GameStore {
   nakamaSession: Session | null;
   userId: string | null;
   matchId: string | null;
+  matchToken: string | null;
   validMoves: MoveAction[];
   matchPresences: string[];
   socketState: 'idle' | 'connecting' | 'connected' | 'disconnected' | 'error';
@@ -27,6 +28,7 @@ interface GameStore {
   setMatchId: (matchId: string) => void;
   setNakamaSession: (session: Session | null) => void;
   setUserId: (userId: string | null) => void;
+  setMatchToken: (matchToken: string | null) => void;
   setOnlineMode: (mode: OnlineMode) => void;
   setPlayerColor: (color: PlayerColor | null) => void;
   setServerRevision: (revision: number) => void;
@@ -50,6 +52,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   nakamaSession: null,
   userId: null,
   matchId: null,
+  matchToken: null,
   validMoves: [],
   matchPresences: [],
   socketState: 'idle',
@@ -80,6 +83,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   setUserId: (userId) => {
     set({ userId });
+  },
+
+  setMatchToken: (matchToken) => {
+    set({ matchToken });
   },
 
   setOnlineMode: (mode) => {
@@ -144,6 +151,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   reset: () => {
     set({
       matchId: null,
+      matchToken: null,
       gameState: createInitialState(),
       validMoves: [],
       matchPresences: [],
