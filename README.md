@@ -80,20 +80,6 @@ curl -i https://nakama.<your-domain>/healthcheck
 
 Expected: `HTTP/1.1 200` with body `{}`.
 
-
-## Players online counter (global realtime lobby)
-
-- The app joins one shared Nakama room channel named `global_lobby` right after socket connect.
-- The server RPC `global_lobby_count` returns how many realtime presences are currently in that shared lobby stream.
-- Count semantics: **raw presences** (sessions), not deduped users. If one user opens two tabs/devices, it counts as 2.
-
-### Quick local test
-
-1. Start backend and app (`npm run backend:dev`, then `npx expo start --web` or mobile simulator).
-2. Open two clients so both reach the Online Match lobby.
-3. Confirm the lobby label updates to `2 players online` (poll interval is 5s).
-4. Close one client and verify the count drops within one poll interval.
-
 ## Offline Revert (one line)
 
 If you want to force local/offline mode without touching code:

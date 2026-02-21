@@ -1,19 +1,10 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { Channel, Client, Session, Socket } from "@heroiclabs/nakama-js";
+import { Client, Session, Socket } from "@heroiclabs/nakama-js";
 
 import { getNakamaConfig } from "../config/nakama";
 
 const SESSION_STORAGE_KEY = "nakama.session";
 const DEVICE_ID_STORAGE_KEY = "nakama.deviceId";
-
-const GLOBAL_LOBBY_CHANNEL = "global_lobby";
-const ONLINE_COUNT_RPC = "global_lobby_count";
-const ONLINE_COUNT_POLL_INTERVAL_MS = 5_000;
-
-export type GlobalLobbyCount = {
-  count: number;
-  stream: string;
-};
 
 type ConnectRetryOptions = {
   attempts?: number;
@@ -35,8 +26,6 @@ export class NakamaService {
   private client: Client | null = null;
   private session: Session | null = null;
   private socket: Socket | null = null;
-  private globalLobbyChannel: Channel | null = null;
-  private globalLobbyJoinPromise: Promise<Channel> | null = null;
 
   getClient(): Client {
     if (!this.client) {
@@ -118,24 +107,13 @@ export class NakamaService {
     }
 
     if (this.socket) {
-      if (!this.globalLobbyChannel) {
-        await this.joinGlobalLobby();
-      }
       return this.socket;
     }
 
     const config = getNakamaConfig();
     const socket = this.getClient().createSocket(config.useSSL, false);
     await socket.connect(session, createStatus);
-
-    socket.ondisconnect = (event) => {
-      this.globalLobbyChannel = null;
-      console.info("[nakama] socket disconnected", event);
-    };
-
     this.socket = socket;
-    console.info("[nakama] socket connected");
-    await this.joinGlobalLobby();
     return socket;
   }
 
@@ -148,9 +126,6 @@ export class NakamaService {
 
     for (let attempt = 1; attempt <= attempts; attempt += 1) {
       try {
-        if (attempt > 1) {
-          console.info("[nakama] reconnect attempt", { attempt, attempts });
-        }
         return await this.connectSocket(createStatus);
       } catch (error) {
         lastError = error;
@@ -176,58 +151,9 @@ export class NakamaService {
     return this.session;
   }
 
-  async joinGlobalLobby(): Promise<Channel> {
-    if (!this.socket) {
-      throw new Error("Socket is not connected.");
-    }
-
-    if (this.globalLobbyChannel) {
-      return this.globalLobbyChannel;
-    }
-
-    if (this.globalLobbyJoinPromise) {
-      return this.globalLobbyJoinPromise;
-    }
-
-    this.globalLobbyJoinPromise = this.socket
-      .joinChat(GLOBAL_LOBBY_CHANNEL, 2, true, false)
-      .then((channel) => {
-        this.globalLobbyChannel = channel;
-        this.globalLobbyJoinPromise = null;
-        console.info("[nakama] joined global lobby", { channelId: channel.id, room: GLOBAL_LOBBY_CHANNEL });
-        return channel;
-      })
-      .catch((error) => {
-        this.globalLobbyJoinPromise = null;
-        console.warn("[nakama] failed to join global lobby", error);
-        throw error;
-      });
-
-    return this.globalLobbyJoinPromise;
-  }
-
-  async fetchGlobalLobbyCount(): Promise<GlobalLobbyCount> {
-    const session = await this.loadSession();
-    if (!session) {
-      throw new Error("No Nakama session available.");
-    }
-
-    const response = await this.getClient().rpc(session, ONLINE_COUNT_RPC, "{}");
-    const parsed = response.payload ? JSON.parse(response.payload) as Partial<GlobalLobbyCount> : {};
-    const count = typeof parsed.count === "number" && Number.isFinite(parsed.count) ? parsed.count : 0;
-    const stream = typeof parsed.stream === "string" ? parsed.stream : GLOBAL_LOBBY_CHANNEL;
-    return { count, stream };
-  }
-
-  getOnlineCountPollIntervalMs(): number {
-    return ONLINE_COUNT_POLL_INTERVAL_MS;
-  }
-
   disconnectSocket(fireDisconnectEvent = true): void {
     this.socket?.disconnect(fireDisconnectEvent);
     this.socket = null;
-    this.globalLobbyChannel = null;
-    this.globalLobbyJoinPromise = null;
   }
 
   async clearSession(): Promise<void> {

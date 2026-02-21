@@ -22,7 +22,7 @@ export const useMatchmaking = (mode: LobbyMode = 'bot') => {
     const router = useRouter();
     const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-    // Poll for online player count from the shared realtime global lobby.
+    // Poll for online player count when in online mode
     useEffect(() => {
         if (mode !== 'online' || !isNakamaEnabled() || !hasNakamaConfig()) return;
 
@@ -30,22 +30,29 @@ export const useMatchmaking = (mode: LobbyMode = 'bot') => {
 
         const fetchOnlineCount = async () => {
             try {
-                await nakamaService.ensureAuthenticatedDevice();
-                await nakamaService.connectSocketWithRetry({ attempts: 3, retryDelayMs: 1_000, createStatus: true });
-                await nakamaService.joinGlobalLobby();
-                const result = await nakamaService.fetchGlobalLobbyCount();
+                const session = await nakamaService.ensureAuthenticatedDevice();
+                const client = nakamaService.getClient();
+                if (!client || cancelled) return;
+
+                // Use Nakama's matchmaker status or list matches to estimate online count
+                // We'll count active matches and presences as a proxy
+                // Count players visible in authoritative matches and include open
+                // waiting slots as online players looking for opponents.
+                const result = await client.listMatches(session, 100, true, '', 0, 2);
                 if (!cancelled) {
-                    console.info('[lobby] fetched players online', result);
-                    setOnlineCount(result.count);
+                    const matches = result.matches ?? [];
+                    const playersInMatches = matches.reduce((count, match) => count + (match.size ?? 0), 0);
+                    const playersWaiting = matches.filter((match) => (match.size ?? 0) === 1).length;
+                    setOnlineCount(playersInMatches + playersWaiting);
                 }
-            } catch (error) {
-                console.warn('[lobby] failed to fetch players online', error);
+            } catch {
+                // Silently fail — count is cosmetic
                 if (!cancelled) setOnlineCount(null);
             }
         };
 
         void fetchOnlineCount();
-        pollingRef.current = setInterval(fetchOnlineCount, nakamaService.getOnlineCountPollIntervalMs());
+        pollingRef.current = setInterval(fetchOnlineCount, 5000);
 
         return () => {
             cancelled = true;

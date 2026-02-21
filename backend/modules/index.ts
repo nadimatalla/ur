@@ -42,10 +42,7 @@ const MAX_PLAYERS = 2;
 
 const RPC_AUTH_LINK_CUSTOM = "auth_link_custom";
 const RPC_MATCHMAKER_ADD = "matchmaker_add";
-const RPC_GLOBAL_LOBBY_COUNT = "global_lobby_count";
 const MATCH_HANDLER = "authoritative_match";
-const GLOBAL_LOBBY_STREAM_LABEL = "global_lobby";
-const GLOBAL_LOBBY_STREAM_MODE = 2;
 
 const asRecord = (value: unknown): RuntimeRecord | null =>
   typeof value === "object" && value !== null ? (value as RuntimeRecord) : null;
@@ -157,7 +154,6 @@ function InitModule(
 ) {
   initializer.registerRpc(RPC_AUTH_LINK_CUSTOM, rpcAuthLinkCustom);
   initializer.registerRpc(RPC_MATCHMAKER_ADD, rpcMatchmakerAdd);
-  initializer.registerRpc(RPC_GLOBAL_LOBBY_COUNT, rpcGlobalLobbyCount);
   initializer.registerMatch(MATCH_HANDLER, {
     matchInit: matchInitHandler,
     matchJoinAttempt: matchJoinAttemptHandler,
@@ -227,38 +223,6 @@ function rpcMatchmakerAdd(
   );
 
   return JSON.stringify({ ticket });
-}
-
-function rpcGlobalLobbyCount(
-  _ctx: nkruntime.Context,
-  logger: nkruntime.Logger,
-  nk: nkruntime.Nakama,
-  _payload: string
-): string {
-  // We count raw socket presences in the shared "global_lobby" stream.
-  // A single user connected from multiple devices/tabs will be counted once per active session.
-  try {
-    const streamUserList = asRecord(nk)?.streamUserList;
-    if (typeof streamUserList !== "function") {
-      logger.warn("streamUserList API not available; returning zero lobby presences.");
-      return JSON.stringify({ count: 0, stream: GLOBAL_LOBBY_STREAM_LABEL });
-    }
-
-    const presences = streamUserList(
-      GLOBAL_LOBBY_STREAM_MODE,
-      null,
-      null,
-      GLOBAL_LOBBY_STREAM_LABEL,
-      true,
-      true
-    ) as unknown;
-
-    const presenceCount = Array.isArray(presences) ? presences.length : 0;
-    return JSON.stringify({ count: presenceCount, stream: GLOBAL_LOBBY_STREAM_LABEL });
-  } catch (error) {
-    logger.error("Failed to read global lobby presences: %s", String(error));
-    return JSON.stringify({ count: 0, stream: GLOBAL_LOBBY_STREAM_LABEL });
-  }
 }
 
 function matchmakerMatched(
@@ -619,7 +583,6 @@ type RuntimeGlobalBindings = {
   InitModule: typeof InitModule;
   rpcAuthLinkCustom: typeof rpcAuthLinkCustom;
   rpcMatchmakerAdd: typeof rpcMatchmakerAdd;
-  rpcGlobalLobbyCount: typeof rpcGlobalLobbyCount;
   matchmakerMatched: typeof matchmakerMatched;
   matchInit: typeof matchInit;
   matchJoinAttempt: typeof matchJoinAttempt;
@@ -634,7 +597,6 @@ const runtimeGlobals: RuntimeGlobalBindings = {
   InitModule,
   rpcAuthLinkCustom,
   rpcMatchmakerAdd,
-  rpcGlobalLobbyCount,
   matchmakerMatched,
   matchInit,
   matchJoinAttempt,
