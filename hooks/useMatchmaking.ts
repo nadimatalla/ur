@@ -36,18 +36,14 @@ export const useMatchmaking = (mode: LobbyMode = 'bot') => {
 
                 // Use Nakama's matchmaker status or list matches to estimate online count
                 // We'll count active matches and presences as a proxy
+                // Count players visible in authoritative matches and include open
+                // waiting slots as online players looking for opponents.
                 const result = await client.listMatches(session, 100, true, '', 0, 2);
                 if (!cancelled) {
-                    // Each match with 1 player means someone is waiting; with 0 means empty
-                    // Players not in matches but connected aren't tracked this way,
-                    // so we'll track total players across all active matches
-                    let totalPlayers = 0;
-                    if (result.matches) {
-                        for (const match of result.matches) {
-                            totalPlayers += match.size || 0;
-                        }
-                    }
-                    setOnlineCount(totalPlayers);
+                    const matches = result.matches ?? [];
+                    const playersInMatches = matches.reduce((count, match) => count + (match.size ?? 0), 0);
+                    const playersWaiting = matches.filter((match) => (match.size ?? 0) === 1).length;
+                    setOnlineCount(playersInMatches + playersWaiting);
                 }
             } catch {
                 // Silently fail — count is cosmetic

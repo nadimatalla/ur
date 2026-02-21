@@ -63,6 +63,10 @@ export default function GameRoom() {
   const effectiveMatchToken = storedMatchId === matchId ? matchToken : null;
   const isMyTurn = hasAssignedColor && gameState.currentTurn === playerColor;
   const canRoll = isMyTurn && gameState.phase === 'rolling';
+  const didPlayerWin =
+    gameState.winner !== null && hasAssignedColor ? gameState.winner === playerColor : gameState.winner === 'light';
+  const winModalTitle = didPlayerWin ? 'Victory' : 'Defeat';
+  const winModalMessage = didPlayerWin ? 'The royal path is yours.' : 'The opponent seized the final lane.';
 
   const [showWinModal, setShowWinModal] = React.useState(false);
   const [rollingVisual, setRollingVisual] = React.useState(false);
@@ -449,8 +453,8 @@ export default function GameRoom() {
 
       <Modal
         visible={showWinModal}
-        title={gameState.winner === 'light' ? 'Victory' : 'Defeat'}
-        message={gameState.winner === 'light' ? 'The royal path is yours.' : 'The opponent seized the final lane.'}
+        title={winModalTitle}
+        message={winModalMessage}
         actionLabel="Return to Menu"
         onAction={handleExit}
       />
