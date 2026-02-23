@@ -70,7 +70,7 @@ export const PieceRail: React.FC<PieceRailProps> = ({
 
         <View style={styles.pieceStack}>
           {Array.from({ length: shownCount }).map((_, index) => (
-            <View key={`piece-${index}`} style={[styles.stackPiece, { marginLeft: index === 0 ? 0 : -urTheme.layout.rail.overlap }]}>
+            <View key={`piece-${index}`} style={[styles.stackPiece, { marginLeft: index === 0 ? 0 : -12 }]}>
               <Piece color={color} size="sm" variant={resolvedVariant} />
             </View>
           ))}
@@ -99,8 +99,8 @@ const styles = StyleSheet.create({
     minHeight: 66,
     borderRadius: urTheme.radii.pill,
     borderWidth: 1.2,
-    borderColor: 'rgba(214, 176, 107, 0.6)',
-    backgroundColor: 'rgba(13, 18, 27, 0.72)',
+    borderColor: 'rgba(200, 152, 30, 0.75)',
+    backgroundColor: 'rgba(30, 18, 10, 0.84)',
     overflow: 'hidden',
     justifyContent: 'center',
     paddingHorizontal: 12,
@@ -123,7 +123,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: '42%',
-    backgroundColor: 'rgba(247, 228, 187, 0.1)',
+    backgroundColor: 'rgba(220, 160, 60, 0.10)',
   },
   railBottomShade: {
     position: 'absolute',
@@ -135,7 +135,7 @@ const styles = StyleSheet.create({
   },
   activeGlow: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(111, 184, 255, 0.22)',
+    backgroundColor: 'rgba(200, 152, 30, 0.16)',
   },
   innerRail: {
     ...StyleSheet.absoluteFillObject,
@@ -157,7 +157,7 @@ const styles = StyleSheet.create({
     height: 24,
     borderRadius: urTheme.radii.pill,
     borderWidth: 1,
-    borderColor: 'rgba(227, 206, 171, 0.28)',
-    backgroundColor: 'rgba(14, 19, 26, 0.52)',
+    borderColor: 'rgba(200, 152, 30, 0.42)',
+    backgroundColor: 'rgba(26, 18, 8, 0.62)',
   },
 });
