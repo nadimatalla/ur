@@ -3,7 +3,6 @@ import { BOARD_COLS, BOARD_ROWS, PATH_DARK, PATH_LENGTH, PATH_LIGHT } from '@/lo
 import { GameState, MoveAction, PlayerColor } from '@/logic/types';
 import { useGameStore } from '@/store/useGameStore';
 import React, { useEffect, useMemo, useState } from 'react';
-import Svg, { Polygon as SvgPolygon } from 'react-native-svg';
 import {
   Image,
   LayoutAnimation,
@@ -52,50 +51,6 @@ const INNER_PADDING = urTheme.spacing.xs;
 const GRID_GAP = Math.max(2, urTheme.spacing.xs - 2);
 const CUE_SIZE = 48;
 
-interface DiamondBorderProps {
-  boardWidth: number;
-  boardHeight: number;
-  padding: number;
-}
-
-const DiamondBorder: React.FC<DiamondBorderProps> = ({ boardWidth, boardHeight, padding }) => {
-  const d = 5;
-  const gap = 11;
-  const offset = padding / 2;
-
-  const diamonds: { cx: number; cy: number; i: number }[] = [];
-
-  for (let x = offset + gap; x < boardWidth - offset; x += gap) {
-    diamonds.push({ cx: x, cy: offset, i: diamonds.length });
-  }
-  for (let x = offset + gap; x < boardWidth - offset; x += gap) {
-    diamonds.push({ cx: x, cy: boardHeight - offset, i: diamonds.length });
-  }
-  for (let y = offset + gap * 2; y < boardHeight - offset; y += gap) {
-    diamonds.push({ cx: offset, cy: y, i: diamonds.length });
-  }
-  for (let y = offset + gap * 2; y < boardHeight - offset; y += gap) {
-    diamonds.push({ cx: boardWidth - offset, cy: y, i: diamonds.length });
-  }
-
-  return (
-    <Svg
-      width={boardWidth}
-      height={boardHeight}
-      style={{ position: 'absolute', top: 0, left: 0 }}
-      pointerEvents="none"
-    >
-      {diamonds.map(({ cx, cy, i }) => (
-        <SvgPolygon
-          key={i}
-          points={`${cx},${cy - d} ${cx + d},${cy} ${cx},${cy + d} ${cx - d},${cy}`}
-          fill={i % 2 === 0 ? 'rgba(200,152,30,0.65)' : 'rgba(240,220,160,0.45)'}
-        />
-      ))}
-    </Svg>
-  );
-};
-
 export const Board: React.FC<BoardProps> = ({
   showRailHints = false,
   highlightMode = 'theatrical',
@@ -112,7 +67,6 @@ export const Board: React.FC<BoardProps> = ({
   const storePlayerColor = useGameStore((state) => state.playerColor);
   const { width } = useWindowDimensions();
   const [selectedMove, setSelectedMove] = useState<MoveAction | null>(null);
-  const [boardHeight, setBoardHeight] = useState(0);
 
   const cuePulse = useSharedValue(0);
   const previewPulse = useSharedValue(0);
@@ -484,7 +438,6 @@ export const Board: React.FC<BoardProps> = ({
               isInteractive={isInteractable}
               highlightMode={highlightMode}
               onPress={() => handleTilePress(r, c)}
-              cellSize={Math.round(cellSize - 6)}
             />
           </View>,
         );
@@ -508,16 +461,10 @@ export const Board: React.FC<BoardProps> = ({
     spawnMove.toIndex === selectedMove.toIndex;
 
   return (
-    <View
-      style={[styles.frame, urShadows.deep, { width: boardWidth }]}
-      onLayout={(e) => setBoardHeight(e.nativeEvent.layout.height)}
-    >
+    <View style={[styles.frame, urShadows.deep, { width: boardWidth }]}> 
       <Image source={urTextures.border} resizeMode="repeat" style={styles.frameBorderTexture} />
       <View style={styles.frameRimOuter} />
       <View style={styles.frameRimInner} />
-      {boardHeight > 0 && (
-        <DiamondBorder boardWidth={boardWidth} boardHeight={boardHeight} padding={FRAME_PADDING} />
-      )}
 
       <View style={styles.innerFrame}>
         <Image source={urTextures.woodDark} resizeMode="repeat" style={styles.boardTexture} />
@@ -608,9 +555,9 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     borderRadius: urTheme.radii.lg + 6,
     padding: FRAME_PADDING,
-    backgroundColor: '#8A3A1A',
-    borderWidth: 2.5,
-    borderColor: 'rgba(200, 152, 30, 0.88)',
+    backgroundColor: '#3A2012',
+    borderWidth: 2,
+    borderColor: 'rgba(217, 164, 65, 0.52)',
     overflow: 'hidden',
   },
   frameBorderTexture: {
@@ -622,19 +569,19 @@ const styles = StyleSheet.create({
     margin: 2,
     borderRadius: urTheme.radii.lg + 4,
     borderWidth: 1,
-    borderColor: 'rgba(240, 192, 64, 0.32)',
+    borderColor: 'rgba(255, 228, 174, 0.2)',
   },
   frameRimInner: {
     ...StyleSheet.absoluteFillObject,
     margin: 7,
     borderRadius: urTheme.radii.lg,
     borderWidth: 1,
-    borderColor: 'rgba(80, 40, 15, 0.58)',
+    borderColor: 'rgba(65, 34, 15, 0.62)',
   },
   innerFrame: {
     borderRadius: urTheme.radii.lg,
     overflow: 'hidden',
-    backgroundColor: '#6A3818',
+    backgroundColor: '#54301A',
     padding: INNER_PADDING,
   },
   boardTexture: {
@@ -680,9 +627,6 @@ const styles = StyleSheet.create({
     width: `${100 / BOARD_COLS}%`,
     aspectRatio: 1,
     padding: 3,
-    backgroundColor: '#0D1117',
-    borderRadius: 2,
-    opacity: 0.92,
   },
   previewLayer: {
     ...StyleSheet.absoluteFillObject,
