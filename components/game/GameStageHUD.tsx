@@ -76,11 +76,12 @@ export const GameStageHUD: React.FC<GameStageHUDProps> = ({ isMyTurn, canRoll, p
 const styles = StyleSheet.create({
   wrap: {
     width: '100%',
+    minHeight: 67,
     borderRadius: urTheme.radii.pill,
     backgroundColor: 'rgba(15, 20, 29, 0.78)',
     borderWidth: 1,
     borderColor: 'rgba(200, 152, 30, 0.72)',
-    paddingVertical: urTheme.spacing.sm,
+    paddingVertical: 12,
     paddingHorizontal: urTheme.spacing.md,
     flexDirection: 'row',
     alignItems: 'center',
@@ -125,16 +126,21 @@ const styles = StyleSheet.create({
   },
   textWrap: {
     marginLeft: urTheme.spacing.sm,
+    flex: 1,
+    minWidth: 0,
   },
   turnTitle: {
     ...urTypography.label,
     color: urTheme.colors.ivory,
     fontSize: 12,
     letterSpacing: 1.15,
+    flexShrink: 1,
   },
   turnHint: {
     color: 'rgba(235, 220, 193, 0.84)',
     fontSize: 11,
+    lineHeight: 13,
     marginTop: 1,
+    flexShrink: 1,
   },
 });

@@ -1,20 +1,9 @@
-import { urShadows, urTheme, urTextures } from '@/constants/urTheme';
+import { urTheme } from '@/constants/urTheme';
 import { BOARD_COLS, BOARD_ROWS, PATH_DARK, PATH_LENGTH, PATH_LIGHT } from '@/logic/constants';
 import { GameState, MoveAction, PlayerColor } from '@/logic/types';
 import { useGameStore } from '@/store/useGameStore';
 import React, { useEffect, useMemo, useState } from 'react';
-import {
-  Image,
-  LayoutAnimation,
-  Platform,
-  Pressable,
-  StyleSheet,
-  Text,
-  UIManager,
-  useWindowDimensions,
-  View,
-} from 'react-native';
-import Svg, { Polygon as SvgPolygon } from 'react-native-svg';
+import { LayoutAnimation, Platform, Pressable, StyleSheet, Text, UIManager, useWindowDimensions, View } from 'react-native';
 import Animated, {
   Easing,
   cancelAnimation,
@@ -24,6 +13,14 @@ import Animated, {
   withSequence,
   withTiming,
 } from 'react-native-reanimated';
+import Svg, {
+  Circle as SvgCircle,
+  Defs,
+  Line as SvgLine,
+  LinearGradient,
+  Rect as SvgRect,
+  Stop,
+} from 'react-native-svg';
 import { Piece } from './Piece';
 import { Tile } from './Tile';
 
@@ -35,6 +32,7 @@ interface BoardProps {
   showRailHints?: boolean;
   highlightMode?: 'subtle' | 'theatrical';
   boardScale?: number;
+  orientation?: 'horizontal' | 'vertical';
   gameStateOverride?: GameState;
   validMovesOverride?: MoveAction[];
   onMakeMoveOverride?: (move: MoveAction) => void;
@@ -49,50 +47,458 @@ interface Point {
 
 const FRAME_PADDING = urTheme.spacing.sm;
 const INNER_PADDING = urTheme.spacing.xs;
-const GRID_GAP = Math.max(2, urTheme.spacing.xs - 2);
+const GRID_GAP = 0;
 const CUE_SIZE = 48;
 const SCORE_CUE_MIN_SIZE = 44;
 const SCORE_CUE_MAX_SIZE = 58;
+const MIN_TILE_SHELL_PADDING = 2;
 
-interface DiamondBorderProps {
-  boardWidth: number;
-  boardHeight: number;
-  padding: number;
+interface BoardSkinCell {
+  key: string;
+  displayRow: number;
+  displayCol: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  neighbors: {
+    top: boolean;
+    right: boolean;
+    bottom: boolean;
+    left: boolean;
+  };
 }
 
-const DiamondBorder: React.FC<DiamondBorderProps> = ({ boardWidth, boardHeight, padding }) => {
-  const d = 5;
-  const gap = 11;
-  const offset = padding / 2;
-  const diamonds: { cx: number; cy: number; i: number }[] = [];
+type BoardSkinLayerMode = 'frame' | 'stone' | 'grid';
 
-  for (let x = offset + gap; x < boardWidth - offset; x += gap) {
-    diamonds.push({ cx: x, cy: offset, i: diamonds.length });
-  }
-  for (let x = offset + gap; x < boardWidth - offset; x += gap) {
-    diamonds.push({ cx: x, cy: boardHeight - offset, i: diamonds.length });
-  }
-  for (let y = offset + gap * 2; y < boardHeight - offset; y += gap) {
-    diamonds.push({ cx: offset, cy: y, i: diamonds.length });
-  }
-  for (let y = offset + gap * 2; y < boardHeight - offset; y += gap) {
-    diamonds.push({ cx: boardWidth - offset, cy: y, i: diamonds.length });
-  }
+const seededUnit = (seed: number) => {
+  const raw = Math.sin(seed * 12.9898 + 78.233) * 43758.5453;
+  return raw - Math.floor(raw);
+};
+
+interface BoardSkinLayerProps {
+  mode: BoardSkinLayerMode;
+  width: number;
+  height: number;
+  cells: BoardSkinCell[];
+  cellSize: number;
+  tileShellPadding: number;
+  frameBand: number;
+}
+
+const BoardSkinLayer: React.FC<BoardSkinLayerProps> = ({
+  mode,
+  width,
+  height,
+  cells,
+  cellSize,
+  tileShellPadding,
+  frameBand,
+}) => {
+  const stoneInset = Math.max(1, Math.min(tileShellPadding - 1, Math.round(cellSize * 0.04) + 1));
+  const panelRadius = Math.max(2, Math.round(cellSize * 0.045));
+  const frameRadius = Math.max(2, Math.round(cellSize * 0.05));
+  const gradientPrefix = useMemo(
+    () => `${mode}-${Math.round(width)}-${Math.round(height)}-${Math.round(cellSize)}-${cells.length}`,
+    [cellSize, cells.length, height, mode, width],
+  );
+
+  const panelRects = useMemo(
+    () =>
+      cells.map((cell) => ({
+        x: cell.x + stoneInset,
+        y: cell.y + stoneInset,
+        width: Math.max(2, cell.width - stoneInset * 2),
+        height: Math.max(2, cell.height - stoneInset * 2),
+      })),
+    [cells, stoneInset],
+  );
+
+  const frameEdgeRects = useMemo(() => {
+    const rects: { x: number; y: number; width: number; height: number; key: string }[] = [];
+
+    for (const cell of cells) {
+      if (!cell.neighbors.top) {
+        rects.push({
+          key: `${cell.key}-edge-top`,
+          x: cell.x,
+          y: cell.y - frameBand,
+          width: cell.width,
+          height: frameBand,
+        });
+      }
+      if (!cell.neighbors.right) {
+        rects.push({
+          key: `${cell.key}-edge-right`,
+          x: cell.x + cell.width,
+          y: cell.y,
+          width: frameBand,
+          height: cell.height,
+        });
+      }
+      if (!cell.neighbors.bottom) {
+        rects.push({
+          key: `${cell.key}-edge-bottom`,
+          x: cell.x,
+          y: cell.y + cell.height,
+          width: cell.width,
+          height: frameBand,
+        });
+      }
+      if (!cell.neighbors.left) {
+        rects.push({
+          key: `${cell.key}-edge-left`,
+          x: cell.x - frameBand,
+          y: cell.y,
+          width: frameBand,
+          height: cell.height,
+        });
+      }
+
+      if (!cell.neighbors.top && !cell.neighbors.left) {
+        rects.push({
+          key: `${cell.key}-corner-tl`,
+          x: cell.x - frameBand,
+          y: cell.y - frameBand,
+          width: frameBand,
+          height: frameBand,
+        });
+      }
+      if (!cell.neighbors.top && !cell.neighbors.right) {
+        rects.push({
+          key: `${cell.key}-corner-tr`,
+          x: cell.x + cell.width,
+          y: cell.y - frameBand,
+          width: frameBand,
+          height: frameBand,
+        });
+      }
+      if (!cell.neighbors.bottom && !cell.neighbors.right) {
+        rects.push({
+          key: `${cell.key}-corner-br`,
+          x: cell.x + cell.width,
+          y: cell.y + cell.height,
+          width: frameBand,
+          height: frameBand,
+        });
+      }
+      if (!cell.neighbors.bottom && !cell.neighbors.left) {
+        rects.push({
+          key: `${cell.key}-corner-bl`,
+          x: cell.x - frameBand,
+          y: cell.y + cell.height,
+          width: frameBand,
+          height: frameBand,
+        });
+      }
+    }
+
+    return rects;
+  }, [cells, frameBand]);
+
+  const woodScratches = useMemo(() => {
+    if (mode !== 'frame') return [];
+
+    const lines: { key: string; x1: number; y1: number; x2: number; y2: number; opacity: number; width: number }[] =
+      [];
+
+    cells.forEach((cell, cellIndex) => {
+      const lineCount = 4;
+      for (let i = 0; i < lineCount; i += 1) {
+        const seed = cellIndex * 17 + i * 13 + 5;
+        const startX = cell.x + seededUnit(seed) * cell.width;
+        const startY = cell.y + seededUnit(seed + 1) * cell.height;
+        const len = cell.width * (0.18 + seededUnit(seed + 2) * 0.42);
+        const angle = (seededUnit(seed + 3) - 0.5) * 0.8;
+        const x2 = startX + Math.cos(angle) * len;
+        const y2 = startY + Math.sin(angle) * len;
+        lines.push({
+          key: `${cell.key}-scratch-${i}`,
+          x1: startX,
+          y1: startY,
+          x2,
+          y2,
+          opacity: 0.08 + seededUnit(seed + 4) * 0.12,
+          width: 0.8 + seededUnit(seed + 5) * 1.1,
+        });
+      }
+    });
+
+    return lines;
+  }, [cells, mode]);
+
+  const stoneSpeckles = useMemo(() => {
+    if (mode !== 'stone') return [];
+
+    const dots: { key: string; cx: number; cy: number; r: number; opacity: number; dark: boolean }[] = [];
+    panelRects.forEach((panel, panelIndex) => {
+      const count = 14;
+      for (let i = 0; i < count; i += 1) {
+        const seed = panelIndex * 31 + i * 7 + 3;
+        dots.push({
+          key: `speck-${panelIndex}-${i}`,
+          cx: panel.x + seededUnit(seed) * panel.width,
+          cy: panel.y + seededUnit(seed + 1) * panel.height,
+          r: 0.45 + seededUnit(seed + 2) * 1.4,
+          opacity: 0.04 + seededUnit(seed + 3) * 0.09,
+          dark: seededUnit(seed + 4) > 0.52,
+        });
+      }
+    });
+    return dots;
+  }, [mode, panelRects]);
+
+  const stoneVeins = useMemo(() => {
+    if (mode !== 'stone') return [];
+
+    const veins: { key: string; x1: number; y1: number; x2: number; y2: number; opacity: number }[] = [];
+    panelRects.forEach((panel, panelIndex) => {
+      for (let i = 0; i < 2; i += 1) {
+        const seed = panelIndex * 23 + i * 19 + 11;
+        const x1 = panel.x + seededUnit(seed) * panel.width;
+        const y1 = panel.y + seededUnit(seed + 1) * panel.height;
+        const x2 = x1 + (seededUnit(seed + 2) - 0.5) * panel.width * 0.55;
+        const y2 = y1 + (seededUnit(seed + 3) - 0.5) * panel.height * 0.35;
+        veins.push({
+          key: `vein-${panelIndex}-${i}`,
+          x1,
+          y1,
+          x2,
+          y2,
+          opacity: 0.06 + seededUnit(seed + 4) * 0.07,
+        });
+      }
+    });
+
+    return veins;
+  }, [mode, panelRects]);
+
+  const pegPoints = useMemo(() => {
+    if (mode !== 'grid') return [];
+
+    const pointMap = new Map<string, { x: number; y: number; count: number }>();
+
+    const addPoint = (x: number, y: number) => {
+      const px = Math.round(x * 2) / 2;
+      const py = Math.round(y * 2) / 2;
+      const key = `${px}:${py}`;
+      const existing = pointMap.get(key);
+      if (existing) {
+        existing.count += 1;
+        return;
+      }
+      pointMap.set(key, { x: px, y: py, count: 1 });
+    };
+
+    cells.forEach((cell) => {
+      addPoint(cell.x, cell.y);
+      addPoint(cell.x + cell.width, cell.y);
+      addPoint(cell.x + cell.width, cell.y + cell.height);
+      addPoint(cell.x, cell.y + cell.height);
+    });
+
+    return [...pointMap.values()].filter((point) => point.count >= 2 || seededUnit(point.x + point.y) > 0.7);
+  }, [cells, mode]);
+
+  const renderWoodRects = () => (
+    <>
+      {cells.map((cell) => (
+        <SvgRect
+          key={`${cell.key}-core`}
+          x={cell.x}
+          y={cell.y}
+          width={cell.width}
+          height={cell.height}
+          fill={`url(#${gradientPrefix}-wood)`}
+        />
+      ))}
+      {frameEdgeRects.map((rect) => (
+        <SvgRect
+          key={rect.key}
+          x={rect.x}
+          y={rect.y}
+          width={rect.width}
+          height={rect.height}
+          fill={`url(#${gradientPrefix}-wood)`}
+          rx={frameRadius}
+          ry={frameRadius}
+        />
+      ))}
+      {cells.map((cell) => (
+        <SvgRect
+          key={`${cell.key}-rim-stroke`}
+          x={cell.x + 0.5}
+          y={cell.y + 0.5}
+          width={Math.max(1, cell.width - 1)}
+          height={Math.max(1, cell.height - 1)}
+          fill="none"
+          stroke="rgba(26, 14, 8, 0.36)"
+          strokeWidth={1}
+        />
+      ))}
+      {woodScratches.map((line) => (
+        <SvgLine
+          key={line.key}
+          x1={line.x1}
+          y1={line.y1}
+          x2={line.x2}
+          y2={line.y2}
+          stroke={`rgba(23, 12, 6, ${line.opacity})`}
+          strokeWidth={line.width}
+          strokeLinecap="round"
+        />
+      ))}
+      {woodScratches.map((line) => (
+        <SvgLine
+          key={`${line.key}-hi`}
+          x1={line.x1}
+          y1={line.y1 - 0.35}
+          x2={line.x2}
+          y2={line.y2 - 0.35}
+          stroke={`rgba(255, 228, 180, ${line.opacity * 0.32})`}
+          strokeWidth={Math.max(0.5, line.width * 0.35)}
+          strokeLinecap="round"
+        />
+      ))}
+    </>
+  );
+
+  const renderStonePanels = () => (
+    <>
+      {panelRects.map((panel, index) => (
+        <SvgRect
+          key={`panel-${index}`}
+          x={panel.x}
+          y={panel.y}
+          width={panel.width}
+          height={panel.height}
+          rx={panelRadius}
+          ry={panelRadius}
+          fill={`url(#${gradientPrefix}-stone)`}
+        />
+      ))}
+      {stoneSpeckles.map((dot) => (
+        <SvgCircle
+          key={dot.key}
+          cx={dot.cx}
+          cy={dot.cy}
+          r={dot.r}
+          fill={dot.dark ? 'rgba(48, 38, 26, 0.55)' : 'rgba(240, 225, 191, 0.6)'}
+          opacity={dot.opacity}
+        />
+      ))}
+      {stoneVeins.map((vein) => (
+        <SvgLine
+          key={vein.key}
+          x1={vein.x1}
+          y1={vein.y1}
+          x2={vein.x2}
+          y2={vein.y2}
+          stroke={`rgba(74, 57, 39, ${vein.opacity})`}
+          strokeWidth={1}
+          strokeLinecap="round"
+        />
+      ))}
+    </>
+  );
+
+  const renderGridDetail = () => (
+    <>
+      {panelRects.map((panel, index) => (
+        <React.Fragment key={`panel-detail-${index}`}>
+          <SvgRect
+            x={panel.x}
+            y={panel.y}
+            width={panel.width}
+            height={panel.height}
+            rx={panelRadius}
+            ry={panelRadius}
+            fill="none"
+            stroke="rgba(24, 14, 9, 0.28)"
+            strokeWidth={1}
+          />
+          <SvgLine
+            x1={panel.x + 1}
+            y1={panel.y + 1}
+            x2={panel.x + panel.width - 1}
+            y2={panel.y + 1}
+            stroke="rgba(255, 237, 205, 0.13)"
+            strokeWidth={1}
+            strokeLinecap="round"
+          />
+          <SvgLine
+            x1={panel.x + 1}
+            y1={panel.y + 1}
+            x2={panel.x + 1}
+            y2={panel.y + panel.height - 1}
+            stroke="rgba(255, 237, 205, 0.09)"
+            strokeWidth={1}
+            strokeLinecap="round"
+          />
+          <SvgLine
+            x1={panel.x + 1}
+            y1={panel.y + panel.height - 1}
+            x2={panel.x + panel.width - 1}
+            y2={panel.y + panel.height - 1}
+            stroke="rgba(26, 14, 8, 0.18)"
+            strokeWidth={1}
+            strokeLinecap="round"
+          />
+          <SvgLine
+            x1={panel.x + panel.width - 1}
+            y1={panel.y + 1}
+            x2={panel.x + panel.width - 1}
+            y2={panel.y + panel.height - 1}
+            stroke="rgba(26, 14, 8, 0.14)"
+            strokeWidth={1}
+            strokeLinecap="round"
+          />
+        </React.Fragment>
+      ))}
+
+      {pegPoints.map((point, index) => (
+        <React.Fragment key={`peg-${index}`}>
+          <SvgCircle cx={point.x} cy={point.y} r={Math.max(1.8, cellSize * 0.032)} fill="rgba(36, 20, 12, 0.72)" />
+          <SvgCircle cx={point.x - 0.45} cy={point.y - 0.45} r={Math.max(0.7, cellSize * 0.012)} fill="rgba(252, 230, 186, 0.34)" />
+        </React.Fragment>
+      ))}
+    </>
+  );
 
   return (
     <Svg
-      width={boardWidth}
-      height={boardHeight}
-      style={{ position: 'absolute', top: 0, left: 0 }}
+      width={width}
+      height={height}
+      viewBox={`0 0 ${width} ${height}`}
+      style={StyleSheet.absoluteFillObject}
       pointerEvents="none"
     >
-      {diamonds.map(({ cx, cy, i }) => (
-        <SvgPolygon
-          key={i}
-          points={`${cx},${cy - d} ${cx + d},${cy} ${cx},${cy + d} ${cx - d},${cy}`}
-          fill={i % 2 === 0 ? 'rgba(200,152,30,0.65)' : 'rgba(240,220,160,0.45)'}
-        />
-      ))}
+      <Defs>
+        <LinearGradient id={`${gradientPrefix}-wood`} x1="0%" y1="0%" x2="100%" y2="100%">
+          <Stop offset="0%" stopColor="#8A5A35" stopOpacity={0.97} />
+          <Stop offset="32%" stopColor="#6E452A" stopOpacity={1} />
+          <Stop offset="72%" stopColor="#4D301F" stopOpacity={1} />
+          <Stop offset="100%" stopColor="#332015" stopOpacity={0.98} />
+        </LinearGradient>
+        <LinearGradient id={`${gradientPrefix}-stone`} x1="0%" y1="0%" x2="0%" y2="100%">
+          <Stop offset="0%" stopColor="#D8C39A" stopOpacity={0.95} />
+          <Stop offset="38%" stopColor="#C7AE82" stopOpacity={0.98} />
+          <Stop offset="72%" stopColor="#B99C71" stopOpacity={0.99} />
+          <Stop offset="100%" stopColor="#A88C62" stopOpacity={1} />
+        </LinearGradient>
+      </Defs>
+
+      {mode === 'frame' && renderWoodRects()}
+      {mode === 'stone' && renderStonePanels()}
+      {mode === 'grid' && renderGridDetail()}
+
+      {mode === 'frame' && (
+        <>
+          <SvgRect x={0} y={0} width={width} height={height} fill="rgba(0,0,0,0)" />
+          <SvgRect x={0} y={0} width={width} height={height * 0.22} fill="rgba(255, 227, 173, 0.05)" />
+          <SvgRect x={0} y={height * 0.72} width={width} height={height * 0.28} fill="rgba(13, 7, 3, 0.08)" />
+        </>
+      )}
     </Svg>
   );
 };
@@ -101,6 +507,7 @@ export const Board: React.FC<BoardProps> = ({
   showRailHints = false,
   highlightMode = 'theatrical',
   boardScale = 1,
+  orientation = 'horizontal',
   gameStateOverride,
   validMovesOverride,
   onMakeMoveOverride,
@@ -113,7 +520,6 @@ export const Board: React.FC<BoardProps> = ({
   const storePlayerColor = useGameStore((state) => state.playerColor);
   const { width } = useWindowDimensions();
   const [selectedMove, setSelectedMove] = useState<MoveAction | null>(null);
-  const [boardHeight, setBoardHeight] = useState(0);
 
   const cuePulse = useSharedValue(0);
   const scoreCuePulse = useSharedValue(0);
@@ -123,6 +529,9 @@ export const Board: React.FC<BoardProps> = ({
   const validMoves = validMovesOverride ?? storeValidMoves;
   const makeMove = onMakeMoveOverride ?? storeMakeMove;
   const playerColor = playerColorOverride ?? storePlayerColor;
+  const isVertical = orientation === 'vertical';
+  const displayRows = isVertical ? BOARD_COLS : BOARD_ROWS;
+  const displayCols = isVertical ? BOARD_ROWS : BOARD_COLS;
 
   const boardWidth = useMemo(
     () => Math.min(width - urTheme.spacing.lg, urTheme.layout.boardMax) * boardScale,
@@ -131,8 +540,48 @@ export const Board: React.FC<BoardProps> = ({
 
   const cellSize = useMemo(() => {
     const gridWidth = boardWidth - FRAME_PADDING * 2 - INNER_PADDING * 2;
-    return gridWidth / BOARD_COLS;
-  }, [boardWidth]);
+    return gridWidth / displayCols;
+  }, [boardWidth, displayCols]);
+  const tileShellPadding = useMemo(
+    () => Math.max(MIN_TILE_SHELL_PADDING, Math.round(cellSize * 0.04)),
+    [cellSize],
+  );
+  const renderedTileSize = useMemo(
+    () => Math.max(18, Math.round(cellSize - tileShellPadding * 2)),
+    [cellSize, tileShellPadding],
+  );
+  const gridHeight = cellSize * displayRows + GRID_GAP * Math.max(0, displayRows - 1);
+  const frameHeight = FRAME_PADDING * 2 + INNER_PADDING * 2 + gridHeight;
+  const gridOrigin = {
+    x: FRAME_PADDING + INNER_PADDING,
+    y: FRAME_PADDING + INNER_PADDING,
+  };
+  const frameBand = useMemo(
+    () => Math.max(5, Math.min(FRAME_PADDING + INNER_PADDING - 2, Math.round(cellSize * 0.1))),
+    [cellSize],
+  );
+
+  const mapLogicalToDisplayCoord = (r: number, c: number): { row: number; col: number } => {
+    if (!isVertical) {
+      return { row: r, col: c };
+    }
+
+    return {
+      row: c,
+      col: BOARD_ROWS - 1 - r,
+    };
+  };
+
+  const mapDisplayToLogicalCoord = (r: number, c: number): { row: number; col: number } => {
+    if (!isVertical) {
+      return { row: r, col: c };
+    }
+
+    return {
+      row: BOARD_ROWS - 1 - c,
+      col: r,
+    };
+  };
 
   const mapIndexToCoord = (color: 'light' | 'dark', index: number, r: number, c: number) => {
     const path = color === 'light' ? PATH_LIGHT : PATH_DARK;
@@ -141,27 +590,82 @@ export const Board: React.FC<BoardProps> = ({
     return coord.row === r && coord.col === c;
   };
 
+  const boardSkinCells = useMemo(() => {
+    const rawCells: Omit<BoardSkinCell, 'neighbors'>[] = [];
+    const activeKeys = new Set<string>();
+
+    for (let displayRow = 0; displayRow < displayRows; displayRow += 1) {
+      for (let displayCol = 0; displayCol < displayCols; displayCol += 1) {
+        const row = isVertical ? BOARD_ROWS - 1 - displayCol : displayRow;
+        const col = isVertical ? displayRow : displayCol;
+        const isGap = (row === 0 || row === 2) && (col === 4 || col === 5);
+        if (isGap) continue;
+
+        const key = `${displayRow}:${displayCol}`;
+        activeKeys.add(key);
+        rawCells.push({
+          key,
+          displayRow,
+          displayCol,
+          x: gridOrigin.x + displayCol * cellSize,
+          y: gridOrigin.y + displayRow * (cellSize + GRID_GAP),
+          width: cellSize,
+          height: cellSize,
+        });
+      }
+    }
+
+    return rawCells.map((cell) => ({
+      ...cell,
+      neighbors: {
+        top: activeKeys.has(`${cell.displayRow - 1}:${cell.displayCol}`),
+        right: activeKeys.has(`${cell.displayRow}:${cell.displayCol + 1}`),
+        bottom: activeKeys.has(`${cell.displayRow + 1}:${cell.displayCol}`),
+        left: activeKeys.has(`${cell.displayRow}:${cell.displayCol - 1}`),
+      },
+    }));
+  }, [cellSize, displayCols, displayRows, gridOrigin.x, gridOrigin.y, isVertical]);
+
   const getCellCenter = (r: number, c: number): Point => ({
-    x: FRAME_PADDING + INNER_PADDING + c * cellSize + cellSize / 2,
-    y: FRAME_PADDING + INNER_PADDING + r * (cellSize + GRID_GAP) + cellSize / 2,
+    x: (() => {
+      const displayCoord = mapLogicalToDisplayCoord(r, c);
+      return FRAME_PADDING + INNER_PADDING + displayCoord.col * cellSize + cellSize / 2;
+    })(),
+    y: (() => {
+      const displayCoord = mapLogicalToDisplayCoord(r, c);
+      return FRAME_PADDING + INNER_PADDING + displayCoord.row * (cellSize + GRID_GAP) + cellSize / 2;
+    })(),
   });
+
+  const projectLogicalOffset = (x: number, y: number): Point => {
+    if (!isVertical) {
+      return { x, y };
+    }
+
+    return {
+      x: -y,
+      y: x,
+    };
+  };
 
   const coordForPathIndex = (color: 'light' | 'dark', index: number): Point | null => {
     const path = color === 'light' ? PATH_LIGHT : PATH_DARK;
 
     if (index === -1) {
       const startCenter = getCellCenter(path[0].row, path[0].col);
+      const reserveOffset = projectLogicalOffset(cellSize * 0.58, 0);
       return {
-        x: startCenter.x + cellSize * 0.58,
-        y: startCenter.y,
+        x: startCenter.x + reserveOffset.x,
+        y: startCenter.y + reserveOffset.y,
       };
     }
 
     if (index === PATH_LENGTH) {
       const finalCenter = getCellCenter(path[path.length - 1].row, path[path.length - 1].col);
+      const finishOffset = projectLogicalOffset(cellSize * 0.95, 0);
       return {
-        x: finalCenter.x + cellSize * 0.95,
-        y: finalCenter.y,
+        x: finalCenter.x + finishOffset.x,
+        y: finalCenter.y + finishOffset.y,
       };
     }
 
@@ -209,9 +713,10 @@ export const Board: React.FC<BoardProps> = ({
     ? (() => {
         const start = spawnCueColor === 'light' ? PATH_LIGHT[0] : PATH_DARK[0];
         const startCenter = getCellCenter(start.row, start.col);
+        const spawnOffset = projectLogicalOffset(cellSize * 0.58, 0);
         return {
-          x: startCenter.x + cellSize * 0.58,
-          y: startCenter.y,
+          x: startCenter.x + spawnOffset.x,
+          y: startCenter.y + spawnOffset.y,
         };
       })()
     : null;
@@ -479,13 +984,19 @@ export const Board: React.FC<BoardProps> = ({
   const renderGrid = () => {
     const rows = [];
 
-    for (let r = 0; r < BOARD_ROWS; r += 1) {
+    for (let displayRow = 0; displayRow < displayRows; displayRow += 1) {
       const rowCells = [];
 
-      for (let c = 0; c < BOARD_COLS; c += 1) {
+      for (let displayCol = 0; displayCol < displayCols; displayCol += 1) {
+        const { row: r, col: c } = mapDisplayToLogicalCoord(displayRow, displayCol);
         const isGap = (r === 0 || r === 2) && (c === 4 || c === 5);
         if (isGap) {
-          rowCells.push(<View key={`${r}-${c}`} style={styles.gapCell} />);
+          rowCells.push(
+            <View
+              key={`gap-${displayRow}-${displayCol}`}
+              style={[styles.gapCell, { width: `${100 / displayCols}%`, padding: tileShellPadding }]}
+            />,
+          );
           continue;
         }
 
@@ -512,11 +1023,14 @@ export const Board: React.FC<BoardProps> = ({
         const isInteractable = isInteractiveTurn && (isValidTarget || !!moveFromTile || isSelectedPiece);
 
         rowCells.push(
-          <View key={`${r}-${c}`} style={styles.cellShell}>
+          <View
+            key={`cell-${displayRow}-${displayCol}`}
+            style={[styles.cellShell, { width: `${100 / displayCols}%`, padding: tileShellPadding }]}
+          >
             <Tile
               row={r}
               col={c}
-              cellSize={Math.round(cellSize - 6)}
+              cellSize={renderedTileSize}
               piece={piece}
               isValidTarget={isValidTarget}
               isSelectedPiece={isSelectedPiece}
@@ -529,7 +1043,7 @@ export const Board: React.FC<BoardProps> = ({
       }
 
       rows.push(
-        <View key={r} style={styles.row}>
+        <View key={`row-${displayRow}`} style={styles.row}>
           {rowCells}
         </View>,
       );
@@ -548,22 +1062,46 @@ export const Board: React.FC<BoardProps> = ({
 
   return (
     <View
-      style={[styles.frame, urShadows.deep, { width: boardWidth }]}
-      onLayout={(e) => setBoardHeight(e.nativeEvent.layout.height)}
+      style={[styles.frame, { width: boardWidth, height: frameHeight }]}
     >
-      <Image source={urTextures.border} resizeMode="repeat" style={styles.frameBorderTexture} />
-      <View style={styles.frameRimOuter} />
-      <View style={styles.frameRimInner} />
-      {boardHeight > 0 && (
-        <DiamondBorder boardWidth={boardWidth} boardHeight={boardHeight} padding={FRAME_PADDING} />
-      )}
+      <View pointerEvents="none" style={styles.boardFrameLayer}>
+        <BoardSkinLayer
+          mode="frame"
+          width={boardWidth}
+          height={frameHeight}
+          cells={boardSkinCells}
+          cellSize={cellSize}
+          tileShellPadding={tileShellPadding}
+          frameBand={frameBand}
+        />
+      </View>
+      <View pointerEvents="none" style={styles.boardStoneBaseLayer}>
+        <BoardSkinLayer
+          mode="stone"
+          width={boardWidth}
+          height={frameHeight}
+          cells={boardSkinCells}
+          cellSize={cellSize}
+          tileShellPadding={tileShellPadding}
+          frameBand={frameBand}
+        />
+      </View>
+      <View pointerEvents="none" style={styles.boardGridLayer}>
+        <BoardSkinLayer
+          mode="grid"
+          width={boardWidth}
+          height={frameHeight}
+          cells={boardSkinCells}
+          cellSize={cellSize}
+          tileShellPadding={tileShellPadding}
+          frameBand={frameBand}
+        />
+      </View>
 
       <View style={styles.innerFrame}>
-        <Image source={urTextures.woodDark} resizeMode="repeat" style={styles.boardTexture} />
-        <View style={styles.topGlow} />
-        <View style={styles.bottomShade} />
-        <View style={styles.innerStroke} />
-        <View style={styles.gridWrap}>{renderGrid()}</View>
+        <View style={styles.tileLayer}>
+          <View style={styles.gridWrap}>{renderGrid()}</View>
+        </View>
       </View>
 
       {previewSegments.length > 0 && (
@@ -671,11 +1209,12 @@ export const Board: React.FC<BoardProps> = ({
       )}
 
       {showRailHints && (
-        <View pointerEvents="none" style={styles.hintRow}>
+        <View pointerEvents="none" style={isVertical ? styles.hintColumn : styles.hintRow}>
           <Text style={styles.hintText}>START</Text>
           <Text style={styles.hintText}>FINISH</Text>
         </View>
       )}
+
     </View>
   );
 };
@@ -685,10 +1224,24 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     borderRadius: urTheme.radii.lg + 6,
     padding: FRAME_PADDING,
-    backgroundColor: '#8A3A1A',
-    borderWidth: 2.5,
-    borderColor: 'rgba(200, 152, 30, 0.88)',
-    overflow: 'hidden',
+    backgroundColor: 'transparent',
+    borderWidth: 0,
+    borderColor: 'transparent',
+    overflow: 'visible',
+    shadowColor: '#120A05',
+    shadowOpacity: 0.18,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 4,
+  },
+  boardFrameLayer: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  boardStoneBaseLayer: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  boardGridLayer: {
+    ...StyleSheet.absoluteFillObject,
   },
   frameBorderTexture: {
     ...StyleSheet.absoluteFillObject,
@@ -710,9 +1263,12 @@ const styles = StyleSheet.create({
   },
   innerFrame: {
     borderRadius: urTheme.radii.lg,
-    overflow: 'hidden',
-    backgroundColor: '#6A3818',
+    overflow: 'visible',
+    backgroundColor: 'transparent',
     padding: INNER_PADDING,
+  },
+  tileLayer: {
+    position: 'relative',
   },
   boardTexture: {
     ...StyleSheet.absoluteFillObject,
@@ -749,17 +1305,15 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   cellShell: {
-    width: `${100 / BOARD_COLS}%`,
     aspectRatio: 1,
-    padding: 3,
+    padding: 0,
   },
   gapCell: {
-    width: `${100 / BOARD_COLS}%`,
     aspectRatio: 1,
-    padding: 3,
-    backgroundColor: '#0D1117',
-    borderRadius: 2,
-    opacity: 0.92,
+    padding: 0,
+    backgroundColor: 'transparent',
+    borderRadius: 0,
+    opacity: 1,
   },
   previewLayer: {
     ...StyleSheet.absoluteFillObject,
@@ -860,6 +1414,14 @@ const styles = StyleSheet.create({
     bottom: 8,
     flexDirection: 'row',
     justifyContent: 'space-between',
+  },
+  hintColumn: {
+    position: 'absolute',
+    top: 14,
+    bottom: 14,
+    right: 8,
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
   hintText: {
     color: 'rgba(248, 229, 198, 0.85)',

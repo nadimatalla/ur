@@ -144,6 +144,8 @@ export const Tile: React.FC<TileProps> = ({
   const tileSeed = useMemo(() => (row * 13 + col * 7) % 5, [col, row]);
   const toneOffset = tileSeed * 4;
   const cellRenderedSize = cellSize;
+  const tileRadius = Math.max(3, Math.round(cellRenderedSize * 0.06));
+  const innerInsetMargin = Math.max(1.5, Math.round(cellRenderedSize * 0.03));
 
   useEffect(() => {
     if (isValidTarget) {
@@ -233,36 +235,59 @@ export const Tile: React.FC<TileProps> = ({
   }));
 
   const baseBackground = rosette
-    ? `rgb(${178 + toneOffset}, ${122 + Math.floor(toneOffset / 2)}, ${52 + Math.floor(toneOffset / 3)})`
+    ? `rgb(${176 + toneOffset}, ${130 + Math.floor(toneOffset / 2)}, ${74 + Math.floor(toneOffset / 3)})`
     : war
-      ? `rgb(${168 + toneOffset}, ${110 + Math.floor(toneOffset / 2)}, ${52 + Math.floor(toneOffset / 3)})`
-      : `rgb(${192 + toneOffset}, ${152 + Math.floor(toneOffset / 2)}, ${88 + Math.floor(toneOffset / 3)})`;
-  const borderColor = rosette ? 'rgba(255, 219, 144, 0.65)' : 'rgba(98, 62, 36, 0.46)';
+      ? `rgb(${154 + toneOffset}, ${106 + Math.floor(toneOffset / 2)}, ${66 + Math.floor(toneOffset / 3)})`
+      : `rgb(${210 + toneOffset}, ${187 + Math.floor(toneOffset / 2)}, ${147 + Math.floor(toneOffset / 3)})`;
+  const borderColor = rosette ? 'rgba(246, 214, 151, 0.38)' : 'rgba(90, 63, 39, 0.28)';
 
   return (
     <TouchableOpacity
       onPress={onPress}
       disabled={!isInteractive}
-      activeOpacity={0.86}
+      activeOpacity={0.92}
       style={[
         styles.tile,
         {
           backgroundColor: baseBackground,
           borderColor,
           borderWidth: rosette ? 1.8 : 1.1,
+          borderRadius: tileRadius,
         },
         isValidTarget && styles.validTile,
         isSelectedPiece && styles.selectedTile,
       ]}
     >
+      <Image
+        source={urTextures.lapisMosaic}
+        resizeMode="cover"
+        style={[
+          styles.tileTexture,
+          styles.tileMottleTexture,
+          rosette && styles.rosetteTextureTint,
+          war && styles.warTextureTint,
+        ]}
+      />
       <Image source={urTextures.wood} resizeMode="repeat" style={styles.tileTexture} />
       {rosette && <RosetteArtwork size={cellRenderedSize} />}
       {!rosette && war && <WarArtwork size={cellRenderedSize} />}
       {!rosette && !war && <PipArtwork size={cellRenderedSize} />}
 
-      <View style={[styles.innerInset, rosette && styles.rosetteInset]} />
+      <View
+        style={[
+          styles.innerInset,
+          {
+            margin: innerInsetMargin,
+            borderRadius: Math.max(2, tileRadius - 2),
+          },
+          rosette && styles.rosetteInset,
+        ]}
+      />
+      <View style={[styles.topLeftBevel, { borderTopLeftRadius: tileRadius }]} />
+      <View style={[styles.bottomRightShade, { borderBottomRightRadius: tileRadius }]} />
       <View style={styles.edgeHighlight} />
       <View style={styles.lowerShade} />
+      <View style={styles.tileDust} />
 
       {isSelectedPiece && <Animated.View style={[styles.selectedRing, selectedPulseStyle]} />}
       {isValidTarget && <Animated.View style={[styles.validRing, pulseStyle]} />}
@@ -287,95 +312,134 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
-    shadowColor: '#1A0E06',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 3,
+    shadowColor: '#140B06',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.16,
+    shadowRadius: 2,
     elevation: 2,
   },
   validTile: {
-    shadowColor: urTheme.colors.gold,
-    shadowOpacity: 0.34,
-    shadowRadius: 7,
+    shadowColor: '#B8FFB3',
+    shadowOpacity: 0.22,
+    shadowRadius: 6,
     elevation: 5,
   },
   selectedTile: {
-    borderColor: 'rgba(240, 192, 64, 0.84)',
+    borderColor: 'rgba(240, 200, 104, 0.72)',
     shadowColor: urTheme.colors.goldGlow,
-    shadowOpacity: 0.4,
-    shadowRadius: 8,
+    shadowOpacity: 0.26,
+    shadowRadius: 7,
     elevation: 7,
   },
   tileTexture: {
     ...StyleSheet.absoluteFillObject,
-    opacity: 0.22,
+    opacity: 0.12,
+  },
+  tileMottleTexture: {
+    opacity: 0.1,
+    tintColor: '#6A5B44',
+  },
+  rosetteTextureTint: {
+    opacity: 0.14,
+    tintColor: '#7A4B2A',
+  },
+  warTextureTint: {
+    opacity: 0.12,
+    tintColor: '#5E3D29',
   },
   innerInset: {
     ...StyleSheet.absoluteFillObject,
     margin: 2.4,
     borderRadius: urTheme.radii.xs,
     borderWidth: 1,
-    borderColor: 'rgba(53, 31, 17, 0.3)',
-    backgroundColor: 'rgba(37, 21, 12, 0.06)',
+    borderColor: 'rgba(64, 43, 28, 0.28)',
+    backgroundColor: 'rgba(18, 10, 6, 0.045)',
   },
   rosetteInset: {
-    borderColor: 'rgba(252, 220, 155, 0.4)',
+    borderColor: 'rgba(252, 220, 155, 0.32)',
+  },
+  topLeftBevel: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: '58%',
+    height: '58%',
+    borderTopWidth: 1,
+    borderLeftWidth: 1,
+    borderColor: 'rgba(255, 243, 211, 0.22)',
+    backgroundColor: 'rgba(255, 239, 201, 0.04)',
+  },
+  bottomRightShade: {
+    position: 'absolute',
+    right: 0,
+    bottom: 0,
+    width: '62%',
+    height: '62%',
+    borderRightWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: 'rgba(27, 15, 8, 0.22)',
+    backgroundColor: 'rgba(28, 16, 9, 0.03)',
   },
   edgeHighlight: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
-    height: '34%',
-    backgroundColor: 'rgba(255, 226, 176, 0.16)',
+    height: '28%',
+    backgroundColor: 'rgba(255, 236, 196, 0.12)',
   },
   lowerShade: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    height: '28%',
-    backgroundColor: 'rgba(34, 17, 9, 0.14)',
+    height: '34%',
+    backgroundColor: 'rgba(22, 12, 7, 0.1)',
+  },
+  tileDust: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(255, 248, 228, 0.018)',
   },
   validRing: {
     position: 'absolute',
-    width: '78%',
-    height: '78%',
-    borderRadius: urTheme.radii.pill,
-    borderWidth: 2.2,
-    borderColor: 'rgba(240, 192, 64, 0.98)',
+    width: '84%',
+    height: '84%',
+    borderRadius: urTheme.radii.xs + 1,
+    borderWidth: 2,
+    borderColor: 'rgba(236, 204, 126, 0.94)',
+    backgroundColor: 'rgba(135, 210, 126, 0.08)',
   },
   selectedRing: {
     position: 'absolute',
-    width: '88%',
-    height: '88%',
-    borderRadius: urTheme.radii.pill,
-    borderWidth: 1.7,
-    borderColor: 'rgba(240, 192, 64, 0.92)',
-    backgroundColor: 'rgba(240, 192, 64, 0.12)',
+    width: '90%',
+    height: '90%',
+    borderRadius: urTheme.radii.sm,
+    borderWidth: 1.8,
+    borderColor: 'rgba(245, 214, 143, 0.92)',
+    backgroundColor: 'rgba(242, 194, 84, 0.08)',
   },
   rosetteGlow: {
     position: 'absolute',
     width: '82%',
     height: '82%',
-    borderRadius: urTheme.radii.pill,
-    backgroundColor: 'rgba(255, 210, 120, 0.2)',
+    borderRadius: urTheme.radii.sm,
+    backgroundColor: 'rgba(255, 210, 120, 0.12)',
   },
   rosetteBurst: {
     position: 'absolute',
     width: '72%',
     height: '72%',
-    borderRadius: urTheme.radii.pill,
-    borderWidth: 2,
-    borderColor: 'rgba(255, 239, 196, 0.92)',
+    borderRadius: urTheme.radii.xs,
+    borderWidth: 1.6,
+    borderColor: 'rgba(255, 239, 196, 0.78)',
   },
   validDot: {
-    width: 14,
-    height: 14,
+    width: 12,
+    height: 12,
     borderRadius: urTheme.radii.pill,
-    backgroundColor: 'rgba(251, 224, 173, 0.86)',
+    backgroundColor: 'rgba(241, 226, 178, 0.9)',
     borderWidth: 1,
-    borderColor: 'rgba(67, 40, 21, 0.45)',
+    borderColor: 'rgba(67, 40, 21, 0.36)',
   },
   pieceWrap: {
     opacity: 0.98,

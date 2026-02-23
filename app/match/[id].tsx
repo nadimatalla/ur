@@ -5,9 +5,10 @@ import { GameStageHUD } from '@/components/game/GameStageHUD';
 import { HowToPlayModal } from '@/components/HowToPlayModal';
 import { PieceRail } from '@/components/game/PieceRail';
 import { Modal } from '@/components/ui/Modal';
-import { urTheme, urTextures, urTypography } from '@/constants/urTheme';
+import { urTheme, urTypography } from '@/constants/urTheme';
 import { hasNakamaConfig, isNakamaEnabled } from '@/config/nakama';
 import { useGameLoop } from '@/hooks/useGameLoop';
+import { BOARD_COLS, BOARD_ROWS } from '@/logic/constants';
 import { PlayerColor } from '@/logic/types';
 import { gameAudio } from '@/services/audio';
 import { nakamaService } from '@/services/nakama';
@@ -22,14 +23,19 @@ import {
   isStateSnapshotPayload,
 } from '@/shared/urMatchProtocol';
 import { MatchData, MatchPresenceEvent, Socket } from '@heroiclabs/nakama-js';
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useRef } from 'react';
-import { Image, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+const UR_BG_IMAGE = require('../../assets/images/ur_bg.png');
 
 export default function GameRoom() {
   const { id, offline } = useLocalSearchParams<{ id?: string | string[]; offline?: string | string[] }>();
   const router = useRouter();
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
 
   const matchId = useMemo(() => (Array.isArray(id) ? id[0] : id), [id]);
   const offlineParam = useMemo(() => (Array.isArray(offline) ? offline[0] : offline), [offline]);
@@ -73,6 +79,7 @@ export default function GameRoom() {
   const [showHowToPlay, setShowHowToPlay] = React.useState(false);
   const [rollingVisual, setRollingVisual] = React.useState(false);
   const [showScoreBanner, setShowScoreBanner] = React.useState(false);
+  const [boardSlotSize, setBoardSlotSize] = React.useState({ width: 0, height: 0 });
   const rollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scoreBannerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -371,94 +378,231 @@ export default function GameRoom() {
     router.replace('/');
   };
 
-  const recentHistory = gameState.history.slice(-5).reverse();
   const lightReserve = gameState.light.pieces.filter((piece) => !piece.isFinished && piece.position === -1).length;
   const darkReserve = gameState.dark.pieces.filter((piece) => !piece.isFinished && piece.position === -1).length;
+  const matchTitle = `Game #${matchId ?? 'local'}`;
 
-  const isCompact = width < 720;
+  const viewportHorizontalPadding = 0;
+  const stageContentWidth = Math.min(Math.max(width - viewportHorizontalPadding * 2, 0), urTheme.layout.stage.maxWidth);
+  const boardBaseWidth = Math.min(width - urTheme.spacing.lg, urTheme.layout.boardMax);
+  const useSideColumns = width >= 980;
+  const compactSupportPanels = width < 460;
+  const boardClusterGap = useSideColumns ? urTheme.spacing.xs : urTheme.spacing.sm;
+  const sideColumnWidth = useSideColumns
+    ? Math.max(224, Math.min(292, Math.floor(stageContentWidth * 0.24)))
+    : 0;
+  const boardWidthLimitByLayout = useSideColumns
+    ? Math.max(
+        224,
+        Math.min(urTheme.layout.boardMax, stageContentWidth - sideColumnWidth * 2 - boardClusterGap * 2),
+      )
+    : Math.max(224, Math.min(urTheme.layout.boardMax, stageContentWidth - 2));
+  const boardFramePadding = urTheme.spacing.sm;
+  const boardInnerPadding = urTheme.spacing.xs;
+  const boardGridGap = Math.max(2, urTheme.spacing.xs - 2);
+  const boardOuterPadding = boardFramePadding * 2 + boardInnerPadding * 2;
+  const verticalBoardRows = BOARD_COLS;
+  const verticalBoardCols = BOARD_ROWS;
+  const verticalBoardGapTotal = (verticalBoardRows - 1) * boardGridGap;
+  const boardSlotWidth = boardSlotSize.width > 0 ? boardSlotSize.width : boardWidthLimitByLayout;
+  const boardSlotHeight = boardSlotSize.height > 0 ? boardSlotSize.height : Math.max(0, height * 0.45);
+  const boardWidthLimitByHeight = Math.min(
+    urTheme.layout.boardMax,
+    boardOuterPadding +
+      (Math.max(0, boardSlotHeight - boardOuterPadding - verticalBoardGapTotal) * verticalBoardCols) /
+        verticalBoardRows,
+  );
+  const widenedBoardLayoutTarget = Math.min(urTheme.layout.boardMax, boardWidthLimitByLayout * 1.5);
+  const targetBoardWidth = Math.max(110, Math.min(widenedBoardLayoutTarget, boardWidthLimitByHeight, boardSlotWidth));
+  const boardScale = Math.max(0.24, Math.min(1.2, targetBoardWidth / Math.max(boardBaseWidth, 1)));
+  const stageGap = height < 760 ? urTheme.spacing.sm : urTheme.spacing.md;
+  const viewportTopPadding = 0;
+  const viewportBottomPadding = Math.max(insets.bottom, urTheme.spacing.xs);
+  const topChromeTop = insets.top + urTheme.spacing.xs;
+  const topChromeHeight = 36;
+  const scoreOverlayTop = topChromeTop + topChromeHeight + urTheme.spacing.xs;
+  const backdropOverscan = Math.ceil(Math.max(width, height) * 0.025);
+  const canvasTopEdgeLift = Math.max(24, Math.min(96, Math.round(height * 0.07)));
+  const wideSupportColumnTopInset = useSideColumns
+    ? Math.max(
+        scoreOverlayTop + urTheme.spacing.lg,
+        Math.min(Math.round(height * 0.54), Math.max(0, height - viewportBottomPadding - 290)),
+      )
+    : 0;
 
   return (
     <View style={styles.screen}>
-      <Stack.Screen
-        options={{
-          title: `Game #${id}`,
-          headerRight: () => (
-            <Pressable
-              onPress={() => setShowHowToPlay(true)}
-              accessibilityRole="button"
-              accessibilityLabel="Open how to play instructions"
-              style={({ pressed }) => [styles.headerHelpButton, pressed && styles.headerHelpButtonPressed]}
-            >
-              <Text style={styles.headerHelpLabel}>Help</Text>
-            </Pressable>
-          ),
-        }}
-      />
+      <Stack.Screen options={{ headerShown: false }} />
 
-      <Image source={urTextures.woodDark} resizeMode="repeat" style={styles.tableGrainPrimary} />
-      <Image source={urTextures.wood} resizeMode="repeat" style={styles.tableGrainSecondary} />
-      <View style={styles.tableTopLight} />
-      <View style={styles.tableBottomShade} />
-      <View style={styles.candleGlow} />
-      <View style={styles.tableVignetteOuter} />
-      <View style={styles.tableVignetteInner} />
-      <View style={styles.tableSoftSpot} />
+      <View pointerEvents="none" style={styles.backdropLayer}>
+        <Image
+          source={UR_BG_IMAGE}
+          resizeMode="stretch"
+          style={[
+            styles.backdropImage,
+            {
+              left: -backdropOverscan,
+              width: width + backdropOverscan * 2,
+              top: -backdropOverscan - canvasTopEdgeLift,
+              height: height + backdropOverscan * 2 + canvasTopEdgeLift,
+            },
+          ]}
+        />
+      </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        <View style={styles.stageWrap}>
-          <View style={styles.scoreRow}>
-            <EdgeScore label="Dark Score" value={`${gameState.dark.finishedCount}/7`} active={!isMyTurn} />
+      <View style={[styles.topChrome, { top: topChromeTop }]}>
+        <View style={styles.topChromeLeft}>
+          <Pressable
+            onPress={handleExit}
+            accessibilityRole="button"
+            accessibilityLabel="Exit game"
+            style={({ pressed }) => [styles.topChromeIconButton, pressed && styles.headerHelpButtonPressed]}
+          >
+            <MaterialIcons name="arrow-back" size={20} color={urTheme.colors.parchment} />
+          </Pressable>
+          <Text numberOfLines={1} style={styles.topChromeTitle}>
+            {matchTitle}
+          </Text>
+        </View>
+
+        <Pressable
+          onPress={() => setShowHowToPlay(true)}
+          accessibilityRole="button"
+          accessibilityLabel="Open how to play instructions"
+          style={({ pressed }) => [styles.headerHelpButton, pressed && styles.headerHelpButtonPressed]}
+        >
+          <Text style={styles.headerHelpLabel}>Help</Text>
+        </Pressable>
+      </View>
+
+      <View
+        style={[
+          styles.stageViewport,
+          {
+            paddingHorizontal: viewportHorizontalPadding,
+            paddingTop: viewportTopPadding,
+            paddingBottom: viewportBottomPadding,
+          },
+        ]}
+      >
+        <View style={[styles.stageWrap, { gap: stageGap }]}>
+          <View
+            pointerEvents="none"
+            style={[styles.scoreRow, styles.scoreRowOverlay, { top: scoreOverlayTop }]}
+          >
             <EdgeScore
               label="Light Score"
               value={`${gameState.light.finishedCount}/7`}
               active={isMyTurn}
+            />
+            <EdgeScore
+              label="Dark Score"
+              value={`${gameState.dark.finishedCount}/7`}
+              active={!isMyTurn}
               align="right"
             />
           </View>
 
-          <PieceRail
-            label="Dark Reserve"
-            color="dark"
-            tokenVariant="dark"
-            reserveCount={darkReserve}
-            active={!isMyTurn}
-          />
+          {useSideColumns ? (
+            <View style={[styles.boardClusterWide, { gap: boardClusterGap }]}>
+              <View style={[styles.sideColumn, { width: sideColumnWidth, paddingTop: wideSupportColumnTopInset }]}>
+                <PieceRail
+                  label="Light Reserve"
+                  color="light"
+                  tokenVariant="light"
+                  reserveCount={lightReserve}
+                  active={isMyTurn}
+                />
+                <GameStageHUD isMyTurn={isMyTurn} canRoll={canRoll} phase={gameState.phase} />
+              </View>
 
-          <GameStageHUD isMyTurn={isMyTurn} canRoll={canRoll} phase={gameState.phase} />
+              <View style={styles.boardCenterColumn}>
+                <View
+                  style={styles.boardViewport}
+                  onLayout={(event) => {
+                    const { width: slotWidth, height: slotHeight } = event.nativeEvent.layout;
+                    setBoardSlotSize((prev) =>
+                      prev.width === slotWidth && prev.height === slotHeight
+                        ? prev
+                        : { width: slotWidth, height: slotHeight },
+                    );
+                  }}
+                >
+                  <View style={styles.boardCard}>
+                    <Board showRailHints highlightMode="theatrical" boardScale={boardScale} orientation="vertical" />
+                  </View>
+                </View>
+              </View>
 
-          <View style={styles.boardCard}>
-            <View style={styles.boardShadow} />
-            <Board showRailHints highlightMode="theatrical" boardScale={isCompact ? 0.95 : 1} />
-          </View>
+              <View style={[styles.sideColumn, { width: sideColumnWidth, paddingTop: wideSupportColumnTopInset }]}>
+                <PieceRail
+                  label="Dark Reserve"
+                  color="dark"
+                  tokenVariant="dark"
+                  reserveCount={darkReserve}
+                  active={!isMyTurn}
+                />
+                <Dice
+                  value={gameState.rollValue}
+                  rolling={rollingVisual}
+                  onRoll={handleRoll}
+                  canRoll={canRoll}
+                  mode="stage"
+                />
+              </View>
+            </View>
+          ) : (
+            <View style={[styles.boardClusterMobile, { gap: urTheme.spacing.sm }]}>
+              <View
+                style={styles.boardViewport}
+                onLayout={(event) => {
+                  const { width: slotWidth, height: slotHeight } = event.nativeEvent.layout;
+                  setBoardSlotSize((prev) =>
+                    prev.width === slotWidth && prev.height === slotHeight ? prev : { width: slotWidth, height: slotHeight },
+                  );
+                }}
+              >
+                <View style={styles.boardCard}>
+                  <Board showRailHints highlightMode="theatrical" boardScale={boardScale} orientation="vertical" />
+                </View>
+              </View>
 
-          <PieceRail
-            label="Light Reserve"
-            color="light"
-            tokenVariant="light"
-            reserveCount={lightReserve}
-            active={isMyTurn}
-          />
-
-          <Dice
-            value={gameState.rollValue}
-            rolling={rollingVisual}
-            onRoll={handleRoll}
-            canRoll={canRoll}
-            mode="stage"
-          />
-
-          {recentHistory.length > 0 && (
-            <View style={styles.historyStrip}>
-              <Text style={styles.historyTitle}>Recent</Text>
-              {recentHistory.map((entry, index) => (
-                <Text key={`${entry}-${index}`} style={styles.historyEntry}>
-                  {entry}
-                </Text>
-              ))}
+              <View style={styles.mobileSupportStack}>
+                <View style={styles.mobileReserveRow}>
+                  <View style={styles.mobileReserveCell}>
+                    <PieceRail
+                      label="Light Reserve"
+                      color="light"
+                      tokenVariant="light"
+                      reserveCount={lightReserve}
+                      active={isMyTurn}
+                    />
+                    <GameStageHUD isMyTurn={isMyTurn} canRoll={canRoll} phase={gameState.phase} />
+                  </View>
+                  <View style={styles.mobileReserveCell}>
+                    <PieceRail
+                      label="Dark Reserve"
+                      color="dark"
+                      tokenVariant="dark"
+                      reserveCount={darkReserve}
+                      active={!isMyTurn}
+                    />
+                    <Dice
+                      value={gameState.rollValue}
+                      rolling={rollingVisual}
+                      onRoll={handleRoll}
+                      canRoll={canRoll}
+                      mode="stage"
+                      compact={compactSupportPanels}
+                      showNumericResult={!compactSupportPanels}
+                    />
+                  </View>
+                </View>
+              </View>
             </View>
           )}
         </View>
-      </ScrollView>
+      </View>
 
       {showScoreBanner && (
         <View pointerEvents="none" style={styles.scoreBannerWrap}>
@@ -484,76 +628,123 @@ export default function GameRoom() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: '#0D1117',
+    backgroundColor: '#D9C39A',
   },
-  tableGrainPrimary: {
+  backdropLayer: {
     ...StyleSheet.absoluteFillObject,
-    opacity: 0.3,
+    zIndex: 0,
+    backgroundColor: '#D9C39A',
   },
-  tableGrainSecondary: {
-    ...StyleSheet.absoluteFillObject,
-    opacity: 0.16,
-    transform: [{ rotate: '180deg' }],
-  },
-  tableTopLight: {
+  backdropImage: {
     position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: '42%',
-    backgroundColor: 'rgba(200, 140, 40, 0.12)',
+    opacity: 1,
   },
-  tableBottomShade: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    height: '54%',
-    backgroundColor: 'rgba(12, 6, 4, 0.44)',
-  },
-  candleGlow: {
-    position: 'absolute',
-    top: '18%',
-    left: '8%',
-    right: '8%',
-    height: '52%',
-    borderRadius: 999,
-    backgroundColor: 'rgba(190, 110, 20, 0.07)',
-  },
-  tableVignetteOuter: {
-    ...StyleSheet.absoluteFillObject,
-    borderColor: 'rgba(0, 0, 0, 0.38)',
-    borderWidth: 36,
-  },
-  tableVignetteInner: {
-    ...StyleSheet.absoluteFillObject,
-    borderColor: 'rgba(0, 0, 0, 0.13)',
-    borderWidth: 10,
-  },
-  tableSoftSpot: {
-    position: 'absolute',
-    top: '28%',
-    left: '16%',
-    width: '68%',
-    height: '36%',
-    borderRadius: urTheme.radii.lg,
-    backgroundColor: 'rgba(255, 238, 211, 0.06)',
-  },
-  scrollContent: {
+  stageViewport: {
+    flex: 1,
     paddingHorizontal: urTheme.spacing.md,
-    paddingTop: urTheme.spacing.md,
-    paddingBottom: urTheme.spacing.xl,
     alignItems: 'center',
   },
   stageWrap: {
     width: '100%',
     maxWidth: urTheme.layout.stage.maxWidth,
-    gap: urTheme.spacing.md,
+    flex: 1,
+    minHeight: 0,
+  },
+  topChrome: {
+    position: 'absolute',
+    left: urTheme.spacing.xs,
+    right: urTheme.spacing.xs,
+    zIndex: 7,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: urTheme.spacing.sm,
+  },
+  topChromeLeft: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: urTheme.spacing.xs,
+  },
+  topChromeIconButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: 1,
+    borderColor: 'rgba(217, 164, 65, 0.78)',
+    backgroundColor: 'rgba(13, 15, 18, 0.38)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  topChromeTitle: {
+    ...urTypography.label,
+    color: urTheme.colors.clay,
+    fontSize: 13,
+    letterSpacing: 0.35,
+    textShadowColor: 'rgba(0, 0, 0, 0.45)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+    flexShrink: 1,
   },
   scoreRow: {
     width: '100%',
     flexDirection: 'row',
     justifyContent: 'space-between',
+    gap: urTheme.spacing.sm,
+    flexShrink: 0,
+  },
+  scoreRowOverlay: {
+    position: 'absolute',
+    left: urTheme.spacing.xs,
+    right: urTheme.spacing.xs,
+    zIndex: 5,
+  },
+  boardClusterWide: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    flex: 1,
+    minHeight: 0,
+  },
+  boardClusterMobile: {
+    width: '100%',
+    flex: 1,
+    minHeight: 0,
+  },
+  sideColumn: {
+    justifyContent: 'flex-start',
+    gap: urTheme.spacing.md,
+    flexShrink: 0,
+  },
+  boardCenterColumn: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 0,
+  },
+  boardViewport: {
+    flex: 1,
+    minHeight: 0,
+    width: '100%',
+    justifyContent: 'flex-start',
+    alignItems: 'center',
+  },
+  mobileSupportStack: {
+    width: '100%',
+    gap: urTheme.spacing.sm,
+    flexShrink: 0,
+  },
+  mobileReserveRow: {
+    width: '100%',
+    flexDirection: 'row',
+    gap: urTheme.spacing.sm,
+    alignItems: 'flex-start',
+  },
+  mobileReserveCell: {
+    flex: 1,
+    minWidth: 0,
+    gap: urTheme.spacing.sm,
   },
   headerHelpButton: {
     minHeight: 34,
@@ -583,15 +774,6 @@ const styles = StyleSheet.create({
     marginTop: 2,
     marginBottom: 2,
   },
-  boardShadow: {
-    position: 'absolute',
-    width: '84%',
-    height: 44,
-    borderRadius: urTheme.radii.pill,
-    backgroundColor: 'rgba(0, 0, 0, 0.35)',
-    top: '52%',
-    zIndex: 0,
-  },
   scoreBannerWrap: {
     position: 'absolute',
     top: urTheme.spacing.lg,
@@ -618,27 +800,5 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: 'rgba(231, 255, 214, 0.97)',
     letterSpacing: 0.4,
-  },
-  historyStrip: {
-    width: '100%',
-    borderRadius: urTheme.radii.md,
-    borderWidth: 1,
-    borderColor: 'rgba(217, 164, 65, 0.44)',
-    backgroundColor: 'rgba(9, 14, 20, 0.7)',
-    paddingHorizontal: urTheme.spacing.md,
-    paddingVertical: urTheme.spacing.sm,
-    overflow: 'hidden',
-  },
-  historyTitle: {
-    ...urTypography.label,
-    fontSize: 10,
-    color: 'rgba(241, 230, 208, 0.72)',
-    marginBottom: 6,
-  },
-  historyEntry: {
-    color: 'rgba(244, 230, 206, 0.9)',
-    fontSize: 12,
-    lineHeight: 18,
-    marginBottom: 4,
   },
 });

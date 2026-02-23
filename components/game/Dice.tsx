@@ -20,6 +20,7 @@ interface DiceProps {
   canRoll: boolean;
   mode?: 'panel' | 'stage';
   showNumericResult?: boolean;
+  compact?: boolean;
 }
 
 interface TetrahedralDieProps {
@@ -78,6 +79,7 @@ export const Dice: React.FC<DiceProps> = ({
   canRoll,
   mode = 'panel',
   showNumericResult = true,
+  compact = false,
 }) => {
   const lift = useSharedValue(0);
   const spin = useSharedValue(0);
@@ -160,13 +162,17 @@ export const Dice: React.FC<DiceProps> = ({
       : 'Wait for your turn';
 
   const isStage = mode === 'stage';
+  const dieSize = compact ? 28 : 38;
+  const dieGap = compact ? 6 : 12;
 
   return (
     <TouchableOpacity onPress={onRoll} disabled={!canRoll || rolling} activeOpacity={0.9} style={styles.touchable}>
       <View
         style={[
           styles.card,
+          compact && styles.compactCard,
           isStage ? styles.stageCard : styles.panelCard,
+          compact && isStage && styles.compactStageCard,
           canRoll ? styles.cardActive : styles.cardLocked,
         ]}
       >
@@ -175,22 +181,22 @@ export const Dice: React.FC<DiceProps> = ({
         <View style={styles.cardBorder} />
         <Animated.View style={[styles.readyHalo, readinessStyle]} />
 
-        <Animated.View style={[styles.groundShadow, groundShadowStyle]} />
+        <Animated.View style={[styles.groundShadow, compact && styles.compactGroundShadow, groundShadowStyle]} />
 
-        <Animated.View style={[styles.diceRow, diceRowStyle]}>
+        <Animated.View style={[styles.diceRow, compact && styles.compactDiceRow, { gap: dieGap }, diceRowStyle]}>
           {[0, 1, 2, 3].map((index) => {
             const isOn = value !== null && index < value;
 
             return (
-              <View key={index} style={styles.dieWrap}>
-                <TetrahedralDie isOn={isOn} size={38} />
+              <View key={index} style={[styles.dieWrap, compact && styles.compactDieWrap]}>
+                <TetrahedralDie isOn={isOn} size={dieSize} />
               </View>
             );
           })}
         </Animated.View>
 
-        {showNumericResult && <Text style={styles.title}>{title}</Text>}
-        <Text style={[styles.subtitle, isStage && styles.stageSubtitle]}>{subtitle}</Text>
+        {showNumericResult && <Text style={[styles.title, compact && styles.compactTitle]}>{title}</Text>}
+        <Text style={[styles.subtitle, compact && styles.compactSubtitle, isStage && styles.stageSubtitle]}>{subtitle}</Text>
       </View>
     </TouchableOpacity>
   );
@@ -218,8 +224,15 @@ const styles = StyleSheet.create({
     minHeight: 144,
   },
   stageCard: {
-    minHeight: 124,
+    minHeight: 143,
     borderRadius: urTheme.radii.pill,
+  },
+  compactCard: {
+    paddingHorizontal: urTheme.spacing.sm,
+    paddingVertical: urTheme.spacing.sm,
+  },
+  compactStageCard: {
+    minHeight: 122,
   },
   cardActive: {
     backgroundColor: '#5A2E10',
@@ -267,17 +280,29 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(5, 10, 17, 0.4)',
     top: 58,
   },
+  compactGroundShadow: {
+    width: 96,
+    height: 18,
+    top: 42,
+  },
   diceRow: {
     flexDirection: 'row',
     gap: 12,
     marginBottom: urTheme.spacing.sm,
     marginTop: 2,
   },
+  compactDiceRow: {
+    marginBottom: urTheme.spacing.xs,
+  },
   dieWrap: {
     width: 38,
     height: 38,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  compactDieWrap: {
+    width: 28,
+    height: 28,
   },
   title: {
     color: '#F6E6CC',
@@ -286,11 +311,19 @@ const styles = StyleSheet.create({
     letterSpacing: 1.05,
     textTransform: 'uppercase',
   },
+  compactTitle: {
+    fontSize: 12,
+    letterSpacing: 0.8,
+  },
   subtitle: {
     marginTop: 3,
     color: 'rgba(244, 223, 191, 0.9)',
     fontSize: 11,
     letterSpacing: 0.35,
+  },
+  compactSubtitle: {
+    fontSize: 10,
+    marginTop: 2,
   },
   stageSubtitle: {
     textTransform: 'uppercase',

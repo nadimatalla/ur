@@ -23,6 +23,7 @@ export const urTheme = {
     bitumen: '#1A1208',
     amber: '#B8651A',
     cedar: '#7A4228',
+    clay: '#5A2E10',
     sand: '#D4BC9A',
     ivory: '#EFE3C8',
     obsidian: '#0D0F12',

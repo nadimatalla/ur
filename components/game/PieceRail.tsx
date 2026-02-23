@@ -91,12 +91,12 @@ const styles = StyleSheet.create({
   },
   label: {
     ...urTypography.label,
-    color: 'rgba(241, 230, 208, 0.95)',
+    color: urTheme.colors.clay,
     fontSize: 12,
     textAlign: 'left',
   },
   rail: {
-    minHeight: 66,
+    minHeight: 76,
     borderRadius: urTheme.radii.pill,
     borderWidth: 1.2,
     borderColor: 'rgba(200, 152, 30, 0.75)',
