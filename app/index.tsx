@@ -59,7 +59,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: '28%',
-    backgroundColor: 'rgba(97, 144, 194, 0.18)',
+    backgroundColor: 'rgba(180, 120, 30, 0.14)',
   },
   midGlow: {
     position: 'absolute',
@@ -67,7 +67,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: '22%',
-    backgroundColor: 'rgba(51, 83, 124, 0.16)',
+    backgroundColor: 'rgba(140, 80, 20, 0.12)',
   },
   bottomShade: {
     position: 'absolute',

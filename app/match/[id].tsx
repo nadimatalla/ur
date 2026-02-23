@@ -399,6 +399,7 @@ export default function GameRoom() {
       <Image source={urTextures.wood} resizeMode="repeat" style={styles.tableGrainSecondary} />
       <View style={styles.tableTopLight} />
       <View style={styles.tableBottomShade} />
+      <View style={styles.candleGlow} />
       <View style={styles.tableVignetteOuter} />
       <View style={styles.tableVignetteInner} />
       <View style={styles.tableSoftSpot} />
@@ -483,7 +484,7 @@ export default function GameRoom() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: urTheme.colors.tableWalnut,
+    backgroundColor: '#0D1117',
   },
   tableGrainPrimary: {
     ...StyleSheet.absoluteFillObject,
@@ -500,7 +501,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: '42%',
-    backgroundColor: 'rgba(255, 213, 166, 0.16)',
+    backgroundColor: 'rgba(200, 140, 40, 0.12)',
   },
   tableBottomShade: {
     position: 'absolute',
@@ -510,10 +511,19 @@ const styles = StyleSheet.create({
     height: '54%',
     backgroundColor: 'rgba(12, 6, 4, 0.44)',
   },
+  candleGlow: {
+    position: 'absolute',
+    top: '18%',
+    left: '8%',
+    right: '8%',
+    height: '52%',
+    borderRadius: 999,
+    backgroundColor: 'rgba(190, 110, 20, 0.07)',
+  },
   tableVignetteOuter: {
     ...StyleSheet.absoluteFillObject,
-    borderColor: 'rgba(0, 0, 0, 0.24)',
-    borderWidth: 24,
+    borderColor: 'rgba(0, 0, 0, 0.38)',
+    borderWidth: 36,
   },
   tableVignetteInner: {
     ...StyleSheet.absoluteFillObject,

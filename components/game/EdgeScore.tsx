@@ -28,7 +28,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderRadius: urTheme.radii.sm,
     borderWidth: 1,
-    borderColor: 'rgba(217, 164, 65, 0.55)',
+    borderColor: 'rgba(200, 152, 30, 0.72)',
     backgroundColor: 'rgba(11, 16, 23, 0.74)',
     alignItems: 'flex-start',
     overflow: 'hidden',
@@ -37,10 +37,10 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
   },
   activeWrap: {
-    borderColor: 'rgba(111, 184, 255, 0.9)',
-    shadowColor: urTheme.colors.glow,
-    shadowOpacity: 0.28,
-    shadowRadius: 7,
+    borderColor: 'rgba(240, 192, 64, 0.95)',
+    shadowColor: '#F0C040',
+    shadowOpacity: 0.34,
+    shadowRadius: 8,
     elevation: 5,
   },
   texture: {

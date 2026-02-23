@@ -3,6 +3,7 @@ import { isRosette, isWarZone } from '@/logic/constants';
 import { PlayerColor } from '@/logic/types';
 import React, { useEffect, useMemo, useRef } from 'react';
 import { Image, StyleSheet, TouchableOpacity, View } from 'react-native';
+import Svg, { Circle, Ellipse, G, Polygon } from 'react-native-svg';
 import Animated, {
   Easing,
   cancelAnimation,
@@ -23,7 +24,84 @@ interface TileProps {
   isInteractive?: boolean;
   onPress?: () => void;
   highlightMode?: 'subtle' | 'theatrical';
+  cellSize?: number;
 }
+
+const RosetteArtwork: React.FC<{ size: number }> = ({ size }) => {
+  const cx = size / 2;
+  const cy = size / 2;
+  const petalRx = size * 0.18;
+  const petalRy = size * 0.1;
+  const petalOffset = size * 0.19;
+  const colors = ['#2AA89A', '#D4702A', '#2AA89A', '#D4702A', '#2AA89A', '#D4702A', '#2AA89A', '#D4702A'];
+  const angles = [0, 45, 90, 135, 180, 225, 270, 315];
+
+  return (
+    <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={styles.artwork} pointerEvents="none">
+      <G>
+        {angles.map((angle, i) => {
+          const rad = (angle * Math.PI) / 180;
+          const ex = cx + Math.cos(rad) * petalOffset;
+          const ey = cy + Math.sin(rad) * petalOffset;
+          return (
+            <Ellipse
+              key={i}
+              cx={ex}
+              cy={ey}
+              rx={petalRx}
+              ry={petalRy}
+              fill={colors[i]}
+              opacity={0.88}
+              transform={`rotate(${angle}, ${ex}, ${ey})`}
+            />
+          );
+        })}
+        <Circle cx={cx} cy={cy} r={size * 0.14} fill="#F2E8D5" stroke="#C8981E" strokeWidth={1.2} />
+        <Circle cx={cx} cy={cy} r={size * 0.05} fill="#1A1208" />
+        <Circle cx={cx} cy={cy} r={size * 0.42} fill="none" stroke="#C8981E" strokeWidth={1} opacity={0.7} />
+      </G>
+    </Svg>
+  );
+};
+
+const PipArtwork: React.FC<{ size: number }> = ({ size }) => {
+  const positions = [
+    { x: size * 0.33, y: size * 0.33 },
+    { x: size * 0.67, y: size * 0.33 },
+    { x: size * 0.33, y: size * 0.67 },
+    { x: size * 0.67, y: size * 0.67 },
+  ];
+  return (
+    <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={styles.artwork} pointerEvents="none">
+      {positions.map((pos, i) => (
+        <Circle key={i} cx={pos.x} cy={pos.y} r={size * 0.065} fill="rgba(90,60,30,0.52)" />
+      ))}
+    </Svg>
+  );
+};
+
+const WarArtwork: React.FC<{ size: number }> = ({ size }) => {
+  const half = size / 2;
+  const d = size * 0.13;
+  const diamonds = [
+    { cx: half * 0.6, cy: half * 0.6 },
+    { cx: half * 1.4, cy: half * 0.6 },
+    { cx: half * 0.6, cy: half * 1.4 },
+    { cx: half * 1.4, cy: half * 1.4 },
+  ];
+
+  return (
+    <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={styles.artwork} pointerEvents="none">
+      {diamonds.map((pos, i) => (
+        <Polygon
+          key={i}
+          points={`${pos.cx},${pos.cy - d} ${pos.cx + d},${pos.cy} ${pos.cx},${pos.cy + d} ${pos.cx - d},${pos.cy}`}
+          fill="rgba(60,30,10,0.38)"
+        />
+      ))}
+    </Svg>
+  );
+};
 
 export const Tile: React.FC<TileProps> = ({
   row,
@@ -34,6 +112,7 @@ export const Tile: React.FC<TileProps> = ({
   isInteractive = false,
   onPress,
   highlightMode = 'theatrical',
+  cellSize = 44,
 }) => {
   const rosette = isRosette(row, col);
   const war = isWarZone(row, col);
@@ -134,53 +213,57 @@ export const Tile: React.FC<TileProps> = ({
   }));
 
   const baseBackground = rosette
-    ? `rgb(${168 + toneOffset}, ${116 + Math.floor(toneOffset / 2)}, ${58 + Math.floor(toneOffset / 3)})`
+    ? `rgb(${178 + toneOffset}, ${122 + Math.floor(toneOffset / 2)}, ${52 + Math.floor(toneOffset / 3)})`
     : war
-      ? `rgb(${198 + toneOffset}, ${162 + Math.floor(toneOffset / 2)}, ${120 + Math.floor(toneOffset / 3)})`
-      : `rgb(${206 + toneOffset}, ${178 + Math.floor(toneOffset / 2)}, ${145 + Math.floor(toneOffset / 3)})`;
-  const borderColor = rosette ? 'rgba(255, 219, 144, 0.65)' : 'rgba(98, 62, 36, 0.46)';
+      ? `rgb(${168 + toneOffset}, ${110 + Math.floor(toneOffset / 2)}, ${52 + Math.floor(toneOffset / 3)})`
+      : `rgb(${192 + toneOffset}, ${152 + Math.floor(toneOffset / 2)}, ${88 + Math.floor(toneOffset / 3)})`;
+
+  const borderColor = rosette
+    ? 'rgba(242, 205, 132, 0.74)'
+    : war
+      ? 'rgba(164, 110, 68, 0.5)'
+      : 'rgba(128, 86, 55, 0.46)';
 
   return (
     <TouchableOpacity
       onPress={onPress}
       disabled={!isInteractive}
-      activeOpacity={0.86}
+      activeOpacity={0.88}
       style={[
         styles.tile,
         {
           backgroundColor: baseBackground,
           borderColor,
           borderWidth: rosette ? 1.8 : 1.1,
+          opacity: isInteractive || piece ? 1 : 0.95,
         },
-        isValidTarget && styles.validTile,
-        isSelectedPiece && styles.selectedTile,
       ]}
     >
       <Image source={urTextures.wood} resizeMode="repeat" style={styles.tileTexture} />
-      {rosette && <Image source={urTextures.rosette} resizeMode="repeat" style={styles.rosettePattern} />}
+      {rosette && <RosetteArtwork size={cellSize} />}
+      {!rosette && war && <WarArtwork size={cellSize} />}
+      {!rosette && !war && <PipArtwork size={cellSize} />}
+      <View style={[styles.innerInset, rosette && styles.rosetteInset]} pointerEvents="none" />
+      <View style={styles.edgeHighlight} pointerEvents="none" />
+      <View style={styles.lowerShade} pointerEvents="none" />
 
-      <View style={[styles.innerInset, rosette && styles.rosetteInset]} />
-      <View style={styles.edgeHighlight} />
-      <View style={styles.lowerShade} />
+      {rosette && <Animated.View style={[styles.rosetteGlow, rosetteGlowStyle]} pointerEvents="none" />}
+      {rosette && <Animated.View style={[styles.rosetteBurst, rosetteBurstStyle]} pointerEvents="none" />}
 
-      {isSelectedPiece && <Animated.View style={[styles.selectedRing, selectedPulseStyle]} />}
-      {isValidTarget && <Animated.View style={[styles.validRing, pulseStyle]} />}
-      {rosette && <Animated.View style={[styles.rosetteGlow, rosetteGlowStyle]} />}
-      {rosette && <Animated.View style={[styles.rosetteBurst, rosetteBurstStyle]} />}
+      {isSelectedPiece && <Animated.View style={[styles.selectedRing, selectedPulseStyle]} pointerEvents="none" />}
+      {isValidTarget && <Animated.View style={[styles.validRing, pulseStyle]} pointerEvents="none" />}
 
-      {rosette && !piece && (
-        <View style={styles.rosetteGlyphWrap}>
-          <View style={styles.rosetteGlyphDiamond} />
-          <View style={[styles.rosetteGlyphDiamond, styles.rosetteGlyphDiamondAlt]} />
-          <View style={styles.rosetteGlyphCore} />
-        </View>
-      )}
-
-      {isValidTarget && !piece && <View style={styles.validDot} />}
+      {isValidTarget && !piece && <View style={styles.validDot} pointerEvents="none" />}
 
       {piece && (
         <View style={styles.pieceWrap}>
-          <Piece color={piece.color} highlight={isValidTarget} state={isValidTarget ? 'active' : 'idle'} />
+          <Piece
+            color={piece.color}
+            highlight={isSelectedPiece || isValidTarget}
+            size="md"
+            variant={piece.color === 'light' ? 'light' : 'dark'}
+            state={isSelectedPiece ? 'active' : 'idle'}
+          />
         </View>
       )}
     </TouchableOpacity>
@@ -190,130 +273,89 @@ export const Tile: React.FC<TileProps> = ({
 const styles = StyleSheet.create({
   tile: {
     flex: 1,
-    borderRadius: urTheme.radii.sm,
+    aspectRatio: 1,
+    borderRadius: urTheme.radii.xs,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
-    shadowColor: '#1A0E06',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 3,
-    elevation: 2,
-  },
-  validTile: {
-    shadowColor: urTheme.colors.gold,
-    shadowOpacity: 0.34,
-    shadowRadius: 7,
-    elevation: 5,
-  },
-  selectedTile: {
-    borderColor: 'rgba(111, 184, 255, 0.8)',
-    shadowColor: urTheme.colors.glow,
-    shadowOpacity: 0.4,
-    shadowRadius: 8,
-    elevation: 7,
+    position: 'relative',
   },
   tileTexture: {
     ...StyleSheet.absoluteFillObject,
-    opacity: 0.22,
+    opacity: 0.18,
   },
-  rosettePattern: {
-    ...StyleSheet.absoluteFillObject,
-    opacity: 0.23,
+  artwork: {
+    position: 'absolute',
   },
   innerInset: {
     ...StyleSheet.absoluteFillObject,
-    margin: 2.4,
+    margin: 4,
     borderRadius: urTheme.radii.xs,
     borderWidth: 1,
-    borderColor: 'rgba(53, 31, 17, 0.3)',
-    backgroundColor: 'rgba(37, 21, 12, 0.06)',
+    borderColor: 'rgba(255, 233, 198, 0.16)',
   },
   rosetteInset: {
-    borderColor: 'rgba(252, 220, 155, 0.4)',
+    borderColor: 'rgba(255, 212, 122, 0.24)',
   },
   edgeHighlight: {
     position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
+    top: 1,
+    left: 1,
+    right: 1,
     height: '34%',
-    backgroundColor: 'rgba(255, 226, 176, 0.16)',
+    borderTopLeftRadius: urTheme.radii.xs,
+    borderTopRightRadius: urTheme.radii.xs,
+    backgroundColor: 'rgba(255, 240, 205, 0.12)',
   },
   lowerShade: {
     position: 'absolute',
-    bottom: 0,
     left: 0,
     right: 0,
-    height: '28%',
-    backgroundColor: 'rgba(34, 17, 9, 0.14)',
-  },
-  validRing: {
-    position: 'absolute',
-    width: '78%',
-    height: '78%',
-    borderRadius: urTheme.radii.pill,
-    borderWidth: 2.2,
-    borderColor: 'rgba(238, 192, 98, 0.95)',
-  },
-  selectedRing: {
-    position: 'absolute',
-    width: '88%',
-    height: '88%',
-    borderRadius: urTheme.radii.pill,
-    borderWidth: 1.7,
-    borderColor: 'rgba(111, 184, 255, 0.95)',
-    backgroundColor: 'rgba(111, 184, 255, 0.14)',
+    bottom: 0,
+    height: '40%',
+    backgroundColor: 'rgba(13, 8, 6, 0.14)',
   },
   rosetteGlow: {
-    position: 'absolute',
-    width: '82%',
-    height: '82%',
-    borderRadius: urTheme.radii.pill,
-    backgroundColor: 'rgba(255, 210, 120, 0.2)',
+    ...StyleSheet.absoluteFillObject,
+    margin: 2,
+    borderRadius: urTheme.radii.xs,
+    borderWidth: 1.2,
+    borderColor: 'rgba(240, 192, 64, 0.82)',
+    backgroundColor: 'rgba(240, 192, 64, 0.08)',
   },
   rosetteBurst: {
-    position: 'absolute',
-    width: '72%',
-    height: '72%',
-    borderRadius: urTheme.radii.pill,
-    borderWidth: 2,
-    borderColor: 'rgba(255, 239, 196, 0.92)',
-  },
-  rosetteGlyphWrap: {
-    width: 24,
-    height: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  rosetteGlyphDiamond: {
-    position: 'absolute',
-    width: 20,
-    height: 20,
-    borderWidth: 2,
-    borderColor: 'rgba(255, 224, 173, 0.8)',
-    transform: [{ rotate: '45deg' }],
-  },
-  rosetteGlyphDiamondAlt: {
-    width: 12,
-    height: 12,
+    ...StyleSheet.absoluteFillObject,
+    margin: 1,
+    borderRadius: urTheme.radii.xs,
     borderWidth: 1.4,
+    borderColor: 'rgba(255, 224, 160, 0.72)',
   },
-  rosetteGlyphCore: {
-    width: 7,
-    height: 7,
-    borderRadius: urTheme.radii.pill,
-    backgroundColor: 'rgba(255, 239, 206, 0.82)',
+  selectedRing: {
+    ...StyleSheet.absoluteFillObject,
+    margin: 1,
+    borderRadius: urTheme.radii.xs,
+    borderWidth: 1.8,
+    borderColor: 'rgba(240, 192, 64, 0.92)',
+    backgroundColor: 'rgba(240, 192, 64, 0.12)',
+  },
+  validRing: {
+    ...StyleSheet.absoluteFillObject,
+    margin: 1,
+    borderRadius: urTheme.radii.xs,
+    borderWidth: 1.8,
+    borderColor: 'rgba(240, 192, 64, 0.98)',
   },
   validDot: {
-    width: 14,
-    height: 14,
+    width: 9,
+    height: 9,
     borderRadius: urTheme.radii.pill,
-    backgroundColor: 'rgba(251, 224, 173, 0.86)',
+    backgroundColor: 'rgba(250, 224, 156, 0.9)',
     borderWidth: 1,
-    borderColor: 'rgba(67, 40, 21, 0.45)',
+    borderColor: 'rgba(83, 52, 24, 0.6)',
   },
   pieceWrap: {
-    opacity: 0.98,
+    position: 'absolute',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });
