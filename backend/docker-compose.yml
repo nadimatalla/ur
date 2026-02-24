@@ -1,0 +1,41 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: ur-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: nakama
+      POSTGRES_USER: nakama
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-nakama}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  nakama:
+    image: heroiclabs/nakama:3.22.0
+    container_name: ur-nakama
+    restart: unless-stopped
+    depends_on:
+      - postgres
+    volumes:
+      - ./nakama.yml:/nakama/data/nakama.yml:ro
+      - ./modules:/nakama/data/modules:ro
+    environment:
+      NAKAMA_DATABASE_ADDRESS: "nakama:${POSTGRES_PASSWORD:-nakama}@postgres:5432/nakama"
+      NAKAMA_SOCKET_SERVER_KEY: ${NAKAMA_SOCKET_SERVER_KEY:-defaultkey}
+      NAKAMA_HTTP_KEY: ${NAKAMA_HTTP_KEY:-changeme}
+    ports:
+      - "7350:7350"
+      - "7351:7351"
+    entrypoint:
+      - "/bin/sh"
+      - "-ecx"
+      - >
+          /nakama/nakama migrate up --database.address "$NAKAMA_DATABASE_ADDRESS" &&
+          exec /nakama/nakama --config /nakama/data/nakama.yml
+
+volumes:
+  postgres_data:

@@ -1,0 +1,9 @@
+{
+  "cleanUrls": true,
+  "rewrites": [
+    {
+      "source": "/match/:id",
+      "destination": "/match/%5Bid%5D"
+    }
+  ]
+}

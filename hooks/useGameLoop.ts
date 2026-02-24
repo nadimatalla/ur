@@ -2,12 +2,14 @@ import { getBotMove } from '@/logic/bot/bot';
 import { useGameStore } from '@/store/useGameStore';
 import { useEffect } from 'react';
 
-export const useGameLoop = () => {
+export const useGameLoop = (enabled = true) => {
     const gameState = useGameStore(state => state.gameState);
     const roll = useGameStore(state => state.roll);
     const makeMove = useGameStore(state => state.makeMove);
 
     useEffect(() => {
+        if (!enabled) return;
+
         const { currentTurn, phase, winner, rollValue } = gameState;
 
         if (winner) return;
@@ -37,5 +39,5 @@ export const useGameLoop = () => {
                 return () => clearTimeout(timer);
             }
         }
-    }, [gameState.currentTurn, gameState.phase, gameState.rollValue]);
+    }, [enabled, gameState.currentTurn, gameState.phase, gameState.rollValue]);
 };

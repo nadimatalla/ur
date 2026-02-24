@@ -1,0 +1,73 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: ur-postgres-prod
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: nakama
+      POSTGRES_USER: nakama
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "nakama", "-d", "nakama"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  nakama:
+    image: heroiclabs/nakama:3.22.0
+    container_name: ur-nakama-prod
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ../nakama.yml:/nakama/data/nakama.yml:ro
+      - ../modules:/nakama/data/modules:ro
+    environment:
+      NAKAMA_DATABASE_ADDRESS: "nakama:${POSTGRES_PASSWORD}@postgres:5432/nakama"
+      NAKAMA_SOCKET_SERVER_KEY: ${NAKAMA_SOCKET_SERVER_KEY}
+      NAKAMA_HTTP_KEY: ${NAKAMA_HTTP_KEY}
+    expose:
+      - "7350"
+      - "7351"
+    ports:
+      - "127.0.0.1:7351:7351"
+    entrypoint:
+      - "/bin/sh"
+      - "-ecx"
+      - >
+          /nakama/nakama migrate up --database.address "$$NAKAMA_DATABASE_ADDRESS" &&
+          exec /nakama/nakama
+          --config /nakama/data/nakama.yml
+          --database.address "$$NAKAMA_DATABASE_ADDRESS"
+          --socket.server_key "$$NAKAMA_SOCKET_SERVER_KEY"
+          --runtime.http_key "$$NAKAMA_HTTP_KEY"
+    healthcheck:
+      test: ["CMD", "/nakama/nakama", "healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  caddy:
+    image: caddy:2.9.1
+    container_name: ur-nakama-caddy
+    restart: unless-stopped
+    depends_on:
+      nakama:
+        condition: service_healthy
+    environment:
+      NAKAMA_DOMAIN: ${NAKAMA_DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  postgres_data:
+  caddy_data:
+  caddy_config:

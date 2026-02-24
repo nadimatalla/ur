@@ -1,44 +1,130 @@
-import { findMatch } from '@/services/matchmaking';
+import { hasNakamaConfig, isNakamaEnabled } from '@/config/nakama';
+import { cancelMatchmaking, findMatch } from '@/services/matchmaking';
+import { nakamaService } from '@/services/nakama';
 import { useGameStore } from '@/store/useGameStore';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
-export const useMatchmaking = () => {
-    const [isSearching, setIsSearching] = useState(false);
+export type LobbyMode = 'bot' | 'online';
+
+export const useMatchmaking = (mode: LobbyMode = 'bot') => {
+    const [status, setStatus] = useState<'idle' | 'connecting' | 'searching' | 'matched' | 'error'>('idle');
+    const [errorMessage, setErrorMessage] = useState<string | null>(null);
+    const [onlineCount, setOnlineCount] = useState<number | null>(null);
     const initGame = useGameStore(state => state.initGame);
+    const setMatchId = useGameStore(state => state.setMatchId);
+    const setNakamaSession = useGameStore(state => state.setNakamaSession);
+    const setUserId = useGameStore(state => state.setUserId);
+    const setMatchToken = useGameStore(state => state.setMatchToken);
+    const setSocketState = useGameStore(state => state.setSocketState);
+    const setOnlineMode = useGameStore(state => state.setOnlineMode);
+    const setPlayerColor = useGameStore(state => state.setPlayerColor);
     const router = useRouter();
+    const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-    const startMatch = async () => {
-        setIsSearching(true);
+    // Poll for online player count when in online mode
+    useEffect(() => {
+        if (mode !== 'online' || !isNakamaEnabled() || !hasNakamaConfig()) return;
+
+        let cancelled = false;
+
+        const fetchOnlineCount = async () => {
+            try {
+                const session = await nakamaService.ensureAuthenticatedDevice();
+                const client = nakamaService.getClient();
+                if (!client || cancelled) return;
+
+                // Use Nakama's matchmaker status or list matches to estimate online count
+                // We'll count active matches and presences as a proxy
+                // Count players visible in authoritative matches and include open
+                // waiting slots as online players looking for opponents.
+                const result = await client.listMatches(session, 100, true, '', 0, 2);
+                if (!cancelled) {
+                    const matches = result.matches ?? [];
+                    const playersInMatches = matches.reduce((count, match) => count + (match.size ?? 0), 0);
+                    const playersWaiting = matches.filter((match) => (match.size ?? 0) === 1).length;
+                    setOnlineCount(playersInMatches + playersWaiting);
+                }
+            } catch {
+                // Silently fail — count is cosmetic
+                if (!cancelled) setOnlineCount(null);
+            }
+        };
+
+        void fetchOnlineCount();
+        pollingRef.current = setInterval(fetchOnlineCount, 5000);
+
+        return () => {
+            cancelled = true;
+            if (pollingRef.current) {
+                clearInterval(pollingRef.current);
+                pollingRef.current = null;
+            }
+        };
+    }, [mode]);
+
+    useEffect(() => {
+        return () => {
+            void cancelMatchmaking();
+        };
+    }, []);
+
+    const startBotGame = useCallback(() => {
+        setOnlineMode('offline');
+        const localMatchId = `local-${Date.now()}`;
+        setMatchToken(null);
+        setMatchId(localMatchId);
+        initGame(localMatchId);
+        setSocketState('connected');
+        setStatus('matched');
+        router.push(`/match/${localMatchId}?offline=1`);
+    }, [initGame, router, setMatchId, setMatchToken, setOnlineMode, setSocketState]);
+
+    const startOnlineMatch = useCallback(async () => {
+        setErrorMessage(null);
+        setStatus('connecting');
+        setSocketState('connecting');
+        setPlayerColor(null);
+
         try {
-            const matchId = await findMatch('local-player');
-            initGame(matchId);
-            router.push(`/match/${matchId}`);
-            // Wait, route is app/(game)/[id].tsx ? or app/game/[id].tsx
-            // File structure: app/(game)/[id].tsx
-            // In expo router, this is /game/123 if we group in (game). 
-            // But (game) is a group so simple /123? or /game/123?
-            // Usually groups (game) are skipped in URL path if they are not folder-based routes with index.
-            // But typically we want /game/[id].
-            // If folder is app/(game)/[id].tsx, route is /[id].
-            // If we want /game/[id], folder should be app/game/[id].tsx.
-            // The prompt said: app/(game)/[id].tsx  (Dynamic Route: /game/123)
-            // This implies the group is ignored? No, if URL is /game/123, then folder should be app/game/[id].
-            // OR app/(game)/game/[id].tsx?
-            // I'll assume standard Expo Router: (game) is ignored. So path is matches /[id].
-            // BUT if I want /game/123, I should create app/game/[id].tsx inside (game)?
-            // For now I'll use router.push(`/${matchId}`) or `/game/${matchId}` depending on what I implemented.
-            // I implemented app/(game)/[id].tsx. So it's root /[id].
-            // Wait, user req said: "Dynamic Route: /game/123".
-            // So I should probably rename `app/(game)/[id].tsx` to `app/(game)/game/[id].tsx`?
-            // Or just assume I will fix route later.
-            // I'll update router push to `/game/${matchId}` and ensure folder structure matches later or now.
-        } catch (e) {
-            console.error(e);
-        } finally {
-            setIsSearching(false);
-        }
-    };
+            await cancelMatchmaking();
 
-    return { startMatch, isSearching };
+            if (!isNakamaEnabled() || !hasNakamaConfig()) {
+                setErrorMessage('Online multiplayer is not configured. Please check your Nakama settings.');
+                setStatus('error');
+                setSocketState('error');
+                return;
+            }
+
+            setOnlineMode('nakama');
+            const result = await findMatch({
+                onSearching: () => setStatus('searching')
+            });
+            setNakamaSession(result.session);
+            setUserId(result.userId);
+            setMatchToken(result.matchToken);
+            setMatchId(result.matchId);
+            initGame(result.matchId);
+            setPlayerColor(result.playerColor);
+            setSocketState('connected');
+            setStatus('matched');
+            router.push(`/match/${result.matchId}`);
+        } catch (e) {
+            await cancelMatchmaking();
+            const message = e instanceof Error ? e.message : 'No opponents found. Try again later.';
+            setErrorMessage(message);
+            setStatus('error');
+            setSocketState('error');
+        }
+    }, [initGame, router, setMatchId, setMatchToken, setNakamaSession, setOnlineMode, setPlayerColor, setSocketState, setUserId]);
+
+    const startMatch = useCallback(async () => {
+        if (mode === 'bot') {
+            startBotGame();
+        } else {
+            await startOnlineMatch();
+        }
+    }, [mode, startBotGame, startOnlineMatch]);
+
+    return { startMatch, status, errorMessage, onlineCount, mode };
 };
